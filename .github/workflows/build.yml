@@ -34,7 +34,9 @@ jobs:
           git config --global user.name "CI"
           git config --global user.email "ci@example.com"
           git config --global init.defaultBranch main
-      - run: cargo test -p gittree-core
+          git config --global core.autocrlf false
+      # 一个测试文件失败后继续跑其余的，一次看到全部失败
+      - run: cargo test -p gittree-core --no-fail-fast
 
   build:
     name: 打包 (${{ matrix.name }})

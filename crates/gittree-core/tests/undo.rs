@@ -9,6 +9,8 @@ fn temp_repo(name: &str) -> PathBuf {
     ops::git(&dir, &["config", "user.name", "测试者"]).unwrap();
     ops::git(&dir, &["config", "user.email", "t@example.com"]).unwrap();
     ops::git(&dir, &["config", "commit.gpgsign", "false"]).unwrap();
+    // Git for Windows 默认会把换行符转换成 \r\n，测试里按原样比较文件内容
+    ops::git(&dir, &["config", "core.autocrlf", "false"]).unwrap();
     dir
 }
 
