@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PRIORITIES, branchSlug, type Card, type Column } from "../lib/board";
+  import { PRIORITIES, branchSlug, uid, type Card, type Column } from "../lib/board";
   import { activate, app, confirm, openRepo, recentRepos } from "../lib/store.svelte";
 
   let {
@@ -9,6 +9,7 @@
     isNew,
     onSave,
     onDelete,
+    onArchive,
     onClose,
   }: {
     card: Card;
@@ -17,12 +18,22 @@
     isNew: boolean;
     onSave: (c: Card) => void;
     onDelete: (id: string) => void;
+    onArchive: (id: string) => void;
     onClose: () => void;
   } = $props();
 
   // 在副本上编辑，点保存才写回
   // svelte-ignore state_referenced_locally
-  let c = $state<Card>({ ...card });
+  let c = $state<Card>({ ...card, checklist: card.checklist.map((x) => ({ ...x })) });
+  let newItem = $state("");
+  const checked = $derived(c.checklist.filter((x) => x.done).length);
+
+  function addItem() {
+    const text = newItem.trim();
+    if (!text) return;
+    c.checklist.push({ id: uid(), text, done: false });
+    newItem = "";
+  }
   let titleEl = $state<HTMLInputElement>();
   let creating = $state(false);
 
@@ -44,6 +55,7 @@
   function save() {
     if (!c.title.trim()) return titleEl?.focus();
     c.title = c.title.trim();
+    c.checklist = c.checklist.filter((x) => x.text.trim());
     onSave({ ...c });
   }
 
@@ -73,6 +85,14 @@
     }
   }
 
+  /** 和归档页的“恢复”一样：原来的列不在了就放到最后一列，完成时间重新算 */
+  function restore() {
+    c.archived = 0;
+    c.doneAt = 0;
+    if (!columns.some((x) => x.id === c.column)) c.column = columns[columns.length - 1]?.id ?? c.column;
+    save();
+  }
+
   async function remove() {
     if (await confirm("删除任务", `确定删除 “${c.title || "（无标题）"}” 吗？`, "删除", true)) onDelete(c.id);
   }
@@ -93,7 +113,38 @@
       placeholder="任务标题"
       onkeydown={(e) => e.key === "Enter" && !e.isComposing && save()}
     />
+    {#if c.archived}
+      <div class="archived">这个任务已经归档，不在看板上显示。保存修改不会恢复，点下面的「恢复到看板」才会放回去。</div>
+    {/if}
     <textarea bind:value={c.description} rows="5" placeholder="描述（可选）"></textarea>
+
+    <div class="checklist">
+      <div class="ck-head">
+        <span>检查项</span>
+        {#if c.checklist.length}
+          <span class="ck-count">{checked}/{c.checklist.length}</span>
+          <span class="ck-bar"><span style="width:{(checked / c.checklist.length) * 100}%"></span></span>
+        {/if}
+      </div>
+      {#each c.checklist as item, i (item.id)}
+        <div class="ck-item">
+          <input type="checkbox" bind:checked={item.done} />
+          <input class="ck-text" class:done={item.done} bind:value={item.text} onkeydown={(e) => e.key === "Enter" && e.preventDefault()} />
+          <button class="ck-del" title="删除" onclick={() => c.checklist.splice(i, 1)}>✕</button>
+        </div>
+      {/each}
+      <input
+        class="ck-new"
+        bind:value={newItem}
+        placeholder="＋ 添加检查项，回车确认"
+        onkeydown={(e) => {
+          if (e.key === "Enter" && !e.isComposing && !e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            addItem();
+          }
+        }}
+      />
+    </div>
 
     <div class="grid">
       <label for="t-col">状态</label>
@@ -154,6 +205,8 @@
 
     <div class="buttons">
       {#if !isNew}<button class="danger" onclick={remove}>删除</button>{/if}
+      {#if !isNew && !c.archived}<button onclick={() => onArchive(c.id)} title="从看板上收起，可以在「归档」里恢复">归档</button>{/if}
+      {#if c.archived}<button onclick={restore}>恢复到看板</button>{/if}
       <span class="grow"></span>
       <button onclick={onClose}>取消</button>
       <button class="primary" onclick={save}>{isNew ? "创建" : "保存"}</button>
@@ -249,6 +302,75 @@
   .row select {
     flex: 1;
     min-width: 0;
+  }
+  .archived {
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--bg-hover);
+    color: var(--text-dim);
+    font-size: 12.5px;
+  }
+  .checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ck-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  .ck-count {
+    font-size: 12px;
+  }
+  .ck-bar {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--bg-hover);
+    overflow: hidden;
+  }
+  .ck-bar span {
+    display: block;
+    height: 100%;
+    background: var(--add);
+  }
+  .ck-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ck-text {
+    flex: 1;
+    min-width: 0;
+    height: 28px;
+    border-color: transparent;
+    background: none;
+  }
+  .ck-text:hover,
+  .ck-text:focus {
+    border-color: var(--border);
+  }
+  .ck-text.done {
+    color: var(--text-faint);
+    text-decoration: line-through;
+  }
+  .ck-del {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-faint);
+    opacity: 0;
+  }
+  .ck-item:hover .ck-del {
+    opacity: 1;
+  }
+  .ck-new {
+    height: 28px;
   }
   .buttons {
     display: flex;

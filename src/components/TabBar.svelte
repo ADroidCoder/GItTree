@@ -15,7 +15,7 @@
     ▦ 任务
     {#if app.tasks}
       {@const last = app.tasks.columns[app.tasks.columns.length - 1]?.id}
-      {@const open = app.tasks.cards.filter((c) => c.column !== last).length}
+      {@const open = app.tasks.cards.filter((c) => c.column !== last && !c.archived).length}
       {#if open}<span class="pcount">{open}</span>{/if}
     {/if}
   </button>

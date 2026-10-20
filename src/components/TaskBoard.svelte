@@ -1,8 +1,12 @@
 <script lang="ts">
-  import { PRIORITIES, uid, type Card, type Column } from "../lib/board";
-  import { app, confirm, dialog, saveTasksSoon } from "../lib/store.svelte";
+  import { PRIORITIES, autoArchive, markDone, uid, type Card, type Column } from "../lib/board";
+  import { app, confirm, dialog, saveTasksSoon, toast } from "../lib/store.svelte";
   import { avatarColor, initials } from "../lib/util";
+  import TaskArchive from "./TaskArchive.svelte";
   import TaskEditor from "./TaskEditor.svelte";
+
+  /** 已完成列默认只显示最近这么多个，其余的折叠起来 */
+  const DONE_LIMIT = 20;
 
   /** 全局任务面板：任务不属于任何仓库，只是可以选择关联一个仓库和分支 */
   const board = $derived(app.tasks);
@@ -12,6 +16,9 @@
   let editing = $state<Card | null>(null);
   let dragging = $state<string | null>(null);
   let dropAt = $state<{ col: string; index: number } | null>(null);
+  let showArchive = $state(false);
+  /** 已完成列是否展开显示全部 */
+  let showAllDone = $state(false);
 
   const assignees = $derived([...new Set((board?.cards ?? []).map((c) => c.assignee).filter(Boolean))].sort());
   const repos = $derived([...new Set((board?.cards ?? []).map((c) => c.repo).filter(Boolean))].sort());
@@ -27,7 +34,7 @@
   function cardsOf(col: string): Card[] {
     const f = filter.trim().toLowerCase();
     return (board?.cards ?? [])
-      .filter((c) => c.column === col)
+      .filter((c) => c.column === col && !c.archived)
       .filter((c) => !assigneeFilter || c.assignee === assigneeFilter)
       .filter((c) => !repoFilter || (repoFilter === "-" ? !c.repo : c.repo === repoFilter))
       .filter((c) => !f || `${c.title} ${c.description} ${c.branch} ${c.assignee}`.toLowerCase().includes(f))
@@ -46,15 +53,19 @@
       due: "",
       repo: repoFilter && repoFilter !== "-" ? repoFilter : "",
       branch: "",
+      checklist: [],
       order: -now, // 新任务放在列的最上面
       created: now,
       updated: now,
+      doneAt: 0,
+      archived: 0,
     };
   }
 
   function saveCard(c: Card) {
     if (!board) return;
     c.updated = Date.now();
+    markDone(board, c);
     const i = board.cards.findIndex((x) => x.id === c.id);
     if (i >= 0) board.cards[i] = c;
     else board.cards.push(c);
@@ -65,6 +76,32 @@
     if (!board) return;
     board.cards = board.cards.filter((c) => c.id !== id);
     saveTasksSoon();
+  }
+
+  function archiveCard(id: string) {
+    const c = board?.cards.find((x) => x.id === id);
+    if (!c) return;
+    c.archived = Date.now();
+    saveTasksSoon();
+    toast(`已归档 “${c.title}”，可以在「归档」里恢复`);
+  }
+
+  /** 把一列里（按当前筛选能看到的）任务全部归档 */
+  async function archiveColumn(col: Column) {
+    const cards = cardsOf(col.id);
+    if (!cards.length) return;
+    if (!(await confirm("归档任务", `把 “${col.name}” 里的 ${cards.length} 个任务全部归档？归档后不在看板上显示，可以在「归档」里搜索和恢复。`, "归档"))) return;
+    const now = Date.now();
+    for (const c of cards) c.archived = now;
+    saveTasksSoon();
+  }
+
+  function setAutoArchive(days: number) {
+    if (!board) return;
+    board.autoArchiveDays = days;
+    const n = autoArchive(board);
+    saveTasksSoon();
+    if (n) toast(`已自动归档 ${n} 个完成超过 ${days} 天的任务`);
   }
 
   // ---------- 列 ----------
@@ -84,10 +121,10 @@
 
   async function deleteColumn(col: Column) {
     if (!board) return;
-    const n = board.cards.filter((c) => c.column === col.id).length;
+    const n = board.cards.filter((c) => c.column === col.id && !c.archived).length;
     if (n > 0) {
       if (!(await confirm("删除列", `“${col.name}” 里还有 ${n} 个任务，删除列会同时删除这些任务。`, "删除", true))) return;
-      board.cards = board.cards.filter((c) => c.column !== col.id);
+      board.cards = board.cards.filter((c) => c.column !== col.id || c.archived);
     }
     board.columns = board.columns.filter((c) => c.id !== col.id);
     saveTasksSoon();
@@ -128,6 +165,7 @@
       target.splice(dropAt.index, 0, card);
       card.column = dropAt.col;
       card.updated = Date.now();
+      markDone(board, card);
       target.forEach((c, i) => (c.order = i));
       saveTasksSoon();
     }
@@ -140,6 +178,7 @@
   }
 
   const lastColumn = $derived(board?.columns[board.columns.length - 1]?.id);
+  const archivedCount = $derived((board?.cards ?? []).filter((c) => c.archived).length);
 </script>
 
 <div class="board-view">
@@ -156,26 +195,34 @@
       {#each repos as r (r)}<option value={r}>{repoName(r)}</option>{/each}
     </select>
     <span class="grow"></span>
-    <button onclick={addColumn}>＋ 添加列</button>
+    <button class:on={showArchive} onclick={() => (showArchive = !showArchive)} title="查看、搜索和恢复归档的任务">
+      ▤ 归档{#if archivedCount}<span class="acount">{archivedCount}</span>{/if}
+    </button>
+    {#if !showArchive}<button onclick={addColumn}>＋ 添加列</button>{/if}
     <button class="primary" onclick={() => board && (editing = newCard(board.columns[0]?.id ?? "todo"))}>＋ 新任务</button>
   </div>
 
   {#if !board}
     <div class="loading">加载中…</div>
+  {:else if showArchive}
+    <TaskArchive {board} {filter} {assigneeFilter} {repoFilter} onOpen={(c) => (editing = { ...c })} {setAutoArchive} />
   {:else}
     <div class="columns">
       {#each board.columns as col, ci (col.id)}
-        {@const cards = cardsOf(col.id)}
+        {@const all = cardsOf(col.id)}
+        {@const isDone = col.id === lastColumn}
+        {@const cards = isDone && !showAllDone ? all.slice(0, DONE_LIMIT) : all}
         <div class="column">
           <div class="col-head">
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <span class="col-name" ondblclick={() => renameColumn(col)} title="双击重命名">{col.name}</span>
-            <span class="count">{cards.length}</span>
+            <span class="count">{all.length}</span>
             <span class="grow"></span>
             <span class="col-acts">
               <button title="左移" disabled={ci === 0} onclick={() => moveColumn(col, -1)}>‹</button>
               <button title="右移" disabled={ci === board.columns.length - 1} onclick={() => moveColumn(col, 1)}>›</button>
               <button title="重命名" onclick={() => renameColumn(col)}>✎</button>
+              <button title="全部归档" disabled={!all.length} onclick={() => archiveColumn(col)}>▤</button>
               <button title="删除列" onclick={() => deleteColumn(col)}>✕</button>
             </span>
             <button class="add" title="在这一列添加任务" onclick={() => (editing = newCard(col.id))}>＋</button>
@@ -211,10 +258,17 @@
                 }}
                 onclick={() => (editing = { ...c })}
               >
-                <div class="card-title" class:done={col.id === lastColumn}>{c.title || "（无标题）"}</div>
+                {#if isDone}
+                  <button class="card-archive" title="归档" onclick={(e) => (e.stopPropagation(), archiveCard(c.id))}>▤</button>
+                {/if}
+                <div class="card-title" class:done={isDone}>{c.title || "（无标题）"}</div>
                 {#if c.description}<div class="card-desc">{c.description}</div>{/if}
                 <div class="card-meta">
                   {#if c.priority}<span class="prio">{PRIORITIES.find((p) => p.value === c.priority)?.label}</span>{/if}
+                  {#if c.checklist.length}
+                    {@const n = c.checklist.filter((x) => x.done).length}
+                    <span class="check" class:complete={n === c.checklist.length} title="检查项">☑ {n}/{c.checklist.length}</span>
+                  {/if}
                   {#if c.due}
                     <span class="due" class:overdue={c.due < today && col.id !== lastColumn}>📅 {c.due.slice(5)}</span>
                   {/if}
@@ -237,7 +291,20 @@
             {#if dropAt?.col === col.id && dropAt.index >= cards.filter((c) => c.id !== dragging).length}
               <div class="placeholder"></div>
             {/if}
-            {#if cards.length === 0 && !dropAt}
+            {#if isDone && all.length > DONE_LIMIT}
+              <div class="more">
+                {#if showAllDone}
+                  <button onclick={() => (showAllDone = false)}>只显示最近 {DONE_LIMIT} 个</button>
+                {:else}
+                  <button onclick={() => (showAllDone = true)}>还有 {all.length - DONE_LIMIT} 个，全部显示</button>
+                {/if}
+                <button onclick={() => archiveColumn(col)}>全部归档</button>
+              </div>
+            {/if}
+            {#if isDone && board.autoArchiveDays && all.length}
+              <div class="auto-hint">完成 {board.autoArchiveDays} 天后自动归档</div>
+            {/if}
+            {#if all.length === 0 && !dropAt}
               <button class="empty" onclick={() => (editing = newCard(col.id))}>＋ 添加任务</button>
             {/if}
           </div>
@@ -259,6 +326,10 @@
     }}
     onDelete={(id) => {
       deleteCard(id);
+      editing = null;
+    }}
+    onArchive={(id) => {
+      archiveCard(id);
       editing = null;
     }}
     onClose={() => (editing = null)}
@@ -475,6 +546,59 @@
     color: #fff;
     font-size: 10.5px;
     font-weight: 600;
+  }
+  .bar button.on {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .acount {
+    margin-left: 5px;
+    padding: 0 6px;
+    border-radius: 8px;
+    background: var(--bg-hover);
+    font-size: 11px;
+  }
+  .card-archive {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: none;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    background: var(--bg-hover);
+    color: var(--text-dim);
+  }
+  .card:hover .card-archive {
+    display: block;
+  }
+  .card-archive:hover {
+    color: var(--text);
+  }
+  .check {
+    padding: 0 6px;
+    border-radius: 3px;
+    background: var(--bg-hover);
+  }
+  .check.complete {
+    background: color-mix(in srgb, var(--add) 25%, transparent);
+    color: var(--text);
+  }
+  .more {
+    display: flex;
+    gap: 6px;
+  }
+  .more button {
+    flex: 1;
+    height: 28px;
+    font-size: 12px;
+  }
+  .auto-hint {
+    color: var(--text-faint);
+    font-size: 11.5px;
+    text-align: center;
   }
   .placeholder {
     height: 46px;

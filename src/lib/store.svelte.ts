@@ -1,4 +1,4 @@
-import { loadTasks, saveTasks, type Board } from "./board";
+import { autoArchive, loadTasks, saveTasks, type Board } from "./board";
 import { api, type AskPassRequest, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type RepoInfo, type Stash, type Status } from "./api";
 
 export interface DiffTarget {
@@ -458,6 +458,7 @@ export async function preloadTasks() {
   if (!app.tasks) {
     try {
       app.tasks = await loadTasks();
+      if (autoArchive(app.tasks)) saveTasksSoon();
     } catch (e) {
       toast(errorText(e), "error");
     }
