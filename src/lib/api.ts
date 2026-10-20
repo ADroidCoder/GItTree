@@ -174,7 +174,7 @@ export type Op =
   | { op: "reset"; oid: string; mode: "soft" | "mixed" | "hard" }
   | { op: "create_tag"; name: string; oid: string; message: string | null }
   | { op: "delete_tag"; name: string }
-  | { op: "fetch" }
+  | { op: "fetch"; quiet?: boolean }
   | { op: "pull" }
   | { op: "push"; force: boolean }
   | { op: "stash_push"; message: string | null; paths?: string[] }
@@ -279,6 +279,7 @@ export const api = {
   rebasePlan: (repo: string, from: string) => invoke<PlanCommit[]>("rebase_plan", { repo, from }),
   openIn: (repo: string, target: OpenTarget, path: string | null, editor: string | null) =>
     invoke<void>("open_in", { repo, target, path, editor }),
+  askpassReply: (id: number, answer: string | null) => invoke<void>("askpass_reply", { id, answer }),
   undoLast: (repo: string) => invoke<string>("undo_last", { repo }),
   conflictFile: (repo: string, path: string) => invoke<ConflictFile>("conflict_file", { repo, path }),
   fileHistory: (repo: string, path: string) => invoke<HistoryEntry[]>("file_history", { repo, path }),
@@ -293,4 +294,10 @@ export interface ProgressEvent {
   text: string;
   /** 会被下一行原地覆盖的进度行（git 用 \r 刷新百分比） */
   transient: boolean;
+}
+
+/** git / ssh 需要用户输入（"askpass" 事件） */
+export interface AskPassRequest {
+  id: number;
+  prompt: string;
 }

@@ -10,10 +10,30 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+/// 每个 git 命令都带上的额外环境变量（界面程序用它设置 GIT_ASKPASS，需要密码时弹窗询问）
+static EXTRA_ENV: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
+
+thread_local! {
+    static NO_PROMPT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// f 执行期间当前线程里的 git 命令不弹窗询问密码，需要时直接失败
+pub fn without_prompt<T>(f: impl FnOnce() -> T) -> T {
+    NO_PROMPT.with(|n| n.set(true));
+    let out = f();
+    NO_PROMPT.with(|n| n.set(false));
+    out
+}
+
+/// 程序启动时调用一次
+pub fn set_extra_env(envs: Vec<(String, String)>) {
+    let _ = EXTRA_ENV.set(envs);
+}
+
 fn command(dir: &Path) -> Command {
     let mut c = Command::new("git");
     c.current_dir(dir)
-        // 界面里没法回答命令行提示，需要密码时直接失败并提示用户
+        // 没有终端可以输入：需要密码时只通过 GIT_ASKPASS 询问，没有设置就直接失败
         .env("GIT_TERMINAL_PROMPT", "0")
         // 不打开编辑器（合并提交说明等）
         .env("GIT_EDITOR", "true")
@@ -21,6 +41,12 @@ fn command(dir: &Path) -> Command {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // 后台操作（自动获取）不弹窗问密码
+    if !NO_PROMPT.with(|n| n.get()) {
+        for (k, v) in EXTRA_ENV.get().into_iter().flatten() {
+            c.env(k, v);
+        }
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

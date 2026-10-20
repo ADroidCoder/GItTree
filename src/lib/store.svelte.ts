@@ -1,5 +1,5 @@
 import { loadTasks, saveTasks, type Board } from "./board";
-import { api, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type RepoInfo, type Stash, type Status } from "./api";
+import { api, type AskPassRequest, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type RepoInfo, type Stash, type Status } from "./api";
 
 export interface DiffTarget {
   /** commit：某个提交里的文件；workdir：工作区文件；conflict：解决冲突 */
@@ -342,7 +342,7 @@ export class RepoTab {
     this.autoFetching = (async () => {
       this.addLog({ text: `—— 自动获取 · ${new Date().toLocaleTimeString()}`, transient: false, kind: "ok" });
       try {
-        await api.gitOp(this.id, { op: "fetch" });
+        await api.gitOp(this.id, { op: "fetch", quiet: true });
         await this.refresh();
       } catch (e) {
         this.addLog({ text: `✗ ${errorText(e)}`, transient: false, kind: "err" });
@@ -427,6 +427,8 @@ function initialTheme(): Theme {
 
 export const app = $state({
   theme: initialTheme(),
+  /** git 等着用户输入用户名、密码等 */
+  askpass: [] as AskPassRequest[],
   /** 克隆 / 新建仓库对话框 */
   cloneDialog: null as null | { mode: "clone" | "init" },
   /** 交互式变基对话框 */

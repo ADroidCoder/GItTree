@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { api, type ProgressEvent } from "./lib/api";
+  import { api, type AskPassRequest, type ProgressEvent } from "./lib/api";
   import { activate, activeTab, app, openRepo, preloadTasks, restoreTabs, startAutoFetch, tabById } from "./lib/store.svelte";
   import { isMac } from "./lib/util";
   import TabBar from "./components/TabBar.svelte";
@@ -15,6 +15,7 @@
   import OpLog from "./components/OpLog.svelte";
   import CloneDialog from "./components/CloneDialog.svelte";
   import RebaseDialog from "./components/RebaseDialog.svelte";
+  import AskPass from "./components/AskPass.svelte";
 
   let toolbar = $state<ReturnType<typeof Toolbar>>();
   const tab = $derived(activeTab());
@@ -32,6 +33,7 @@
     const unlisten = [
       listen<string>("repo-changed", (e) => tabById(e.payload)?.refresh()),
       listen<string>("workdir-changed", (e) => tabById(e.payload)?.refreshStatus()),
+      listen<AskPassRequest>("askpass", (e) => app.askpass.push(e.payload)),
       listen<ProgressEvent>("git-progress", (e) => tabById(e.payload.repo)?.onProgress(e.payload)),
     ];
     // 切回窗口时刷新当前标签页（可能在终端里改过仓库）
@@ -108,6 +110,9 @@
     <div class="toast {t.kind}">{t.text}</div>
   {/each}
 </div>
+{#if app.askpass.length}
+  <AskPass />
+{/if}
 {#if app.cloneDialog}
   <CloneDialog />
 {/if}

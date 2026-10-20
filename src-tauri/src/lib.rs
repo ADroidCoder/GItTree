@@ -1,3 +1,5 @@
+mod askpass;
+
 use gittree_core::gix::{self, ObjectId};
 use gittree_core::log::{self, Error, HeadInfo, Log, RefInfo, Timings};
 use gittree_core::flow::{self, FinishOptions, FlowConfig};
@@ -431,7 +433,11 @@ enum Op {
     Reset { oid: String, mode: String },
     CreateTag { name: String, oid: String, message: Option<String> },
     DeleteTag { name: String },
-    Fetch,
+    Fetch {
+        /// 后台自动获取：需要登录时不弹窗
+        #[serde(default)]
+        quiet: bool,
+    },
     Pull,
     Push { force: bool },
     StashPush {
@@ -742,7 +748,8 @@ fn run_op(dir: &Path, git_dir: &Path, op: Op) -> Result<String, Error> {
             Op::Reset { oid, mode } => done(ops::reset(d, &oid, &mode)),
             Op::CreateTag { name, oid, message } => done(ops::create_tag(d, &name, &oid, message.as_deref())),
             Op::DeleteTag { name } => done(ops::delete_tag(d, &name)),
-            Op::Fetch => ops::fetch(d),
+            Op::Fetch { quiet: true } => ops::without_prompt(|| ops::fetch(d)),
+            Op::Fetch { quiet: false } => ops::fetch(d),
             Op::Pull => ops::pull(d),
             Op::Push { force } => ops::push(d, force),
             Op::StashPush { message, paths } => done(ops::stash_push(d, message.as_deref(), &paths)),
@@ -808,9 +815,17 @@ fn initial_repo() -> Option<String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 被 git 当作询问密码的程序启动时，问完直接退出，不打开窗口
+    if let Some(code) = askpass::helper_main() {
+        std::process::exit(code);
+    }
     fix_path();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            ops::set_extra_env(askpass::start(app.handle().clone()));
+            Ok(())
+        })
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             open_repo,
@@ -819,6 +834,7 @@ pub fn run() {
             set_focus,
             cancel_op,
             undo_last,
+            askpass::askpass_reply,
             clone_repo,
             init_repo,
             rebase_plan,
