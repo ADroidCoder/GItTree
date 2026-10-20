@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/gittree-core", "src-tauri"]
+
+[workspace.dependencies]
+git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 开发模式下也优化依赖和核心库，否则大仓库加载会很慢
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev.package.gittree-core]
+opt-level = 3
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

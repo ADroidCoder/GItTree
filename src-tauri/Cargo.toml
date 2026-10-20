@@ -1,0 +1,21 @@
+[package]
+name = "gittree"
+version = "0.1.0"
+description = "高性能 Git 桌面客户端"
+edition = "2024"
+license = "Apache-2.0"
+
+[lib]
+name = "gittree_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+gittree-core = { path = "../crates/gittree-core" }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+notify = "8"
+serde.workspace = true
+serde_json.workspace = true

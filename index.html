@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GitTree</title>
+    <script>
+      // 在页面渲染前设置主题，避免启动时闪一下白屏。默认深色（和 GitKraken 一样）
+      try {
+        document.documentElement.dataset.theme = localStorage.getItem("gittree.theme") || "dark";
+      } catch {
+        document.documentElement.dataset.theme = "dark";
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

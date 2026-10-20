@@ -1,0 +1,11 @@
+[package]
+name = "gittree-core"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+git2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+gix = { version = "0.89", default-features = false, features = ["max-performance-safe", "sha1"] }
