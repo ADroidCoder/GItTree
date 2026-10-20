@@ -1,102 +1,175 @@
+<div align="center">
+
 # GitTree
 
-用 Rust 写的高性能 Git 桌面客户端，支持 macOS 和 Windows。
+**A fast, free and open-source Git desktop client for macOS and Windows.**
 
-## 平时怎么用
+Built with Rust and Tauri. Stays smooth on repositories with hundreds of thousands of commits and thousands of branches.
 
-```bash
-npm run tauri dev                              # 开发模式运行
-GITTREE_REPO=/你的仓库 npm run tauri dev        # 启动时直接打开某个仓库
-npm run tauri build                            # 打包成安装包（macOS 为 .dmg / .app）
-```
+[![Build](https://github.com/ADroidCoder/GItTree/actions/workflows/build.yml/badge.svg)](https://github.com/ADroidCoder/GItTree/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/ADroidCoder/GItTree?include_prereleases&sort=semver)](https://github.com/ADroidCoder/GItTree/releases/latest)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 
-- **多个仓库**：每个仓库一个标签页，点标签栏的 ＋ 打开新仓库（也可以从最近打开的列表里选）。关闭程序时会记住打开了哪些标签页，下次启动自动恢复。
-- **只看当前分支**：工具栏的「◎ 只看当前分支」，分支多的时候图会清爽很多；右键任意分支可以「只显示这个分支」或「同时显示这个分支」。筛选会按仓库记住。
-- **Git Flow**：工具栏「Git Flow」按钮打开面板：上面四个按钮开始 feature / bugfix / release / hotfix，下面按类型列出所有进行中的 flow 分支，每个都可以「完成」「推送」「切换」（不用先切过去）。和命令行 git flow、SourceTree 共用同一份配置。
-- **任务面板**：标签栏最左边的「▦ 任务」，全局一个，不属于任何仓库。按列（待办 / 进行中 / 待验证 / 已完成，可增删改）拖动管理任务，可以设负责人、优先级、截止日期；可选地关联一个仓库和分支，方便跳过去看。数据保存在本机应用数据目录里，不会写进仓库。
-- **Stash**：左侧栏点 stash 可以查看里面的文件和 diff（包括未跟踪的新文件），并应用 / 恢复 / 删除。工作区文件可以 ⌘/Ctrl、Shift 多选，只 stash 选中的文件。
-- **进度和日志**：获取、拉取、推送时左下角显示当前阶段、百分比和已用时间，可以中途取消；工具栏「≡ 日志」可以查看执行过的每条 git 命令及其完整输出。
-- **撤销**：工具栏「↶ 撤销」或 ⌘/Ctrl+Z，撤销提交（改动回到暂存区）、切换分支、新建 / 删除分支和标签、合并、变基、拣选、还原、重置、拉取、Git Flow 开始 / 完成。最多记 50 步；如果之后在命令行里又改过仓库，会拒绝撤销，避免覆盖新的改动。推送、获取、丢弃改动不能撤销。
-- **冲突解决**：合并 / 变基出现冲突时自动打开冲突界面，每一处冲突左右对比“当前”和“传入”，选择用哪边、两边都要、用修改前的，或手动编辑；也可以整个文件用某一边。GBK 等非 UTF-8 文件也不会被改坏。
-- **文件历史 / Blame**：右键文件或在差异视图顶部点「历史」「Blame」。历史会跟踪重命名，Blame 显示每一行是谁、什么时候、在哪个提交里改的，点一下跳到提交图。
-- **克隆 / 新建仓库**：标签栏「+」或欢迎页，粘贴地址就能克隆，带进度和取消；也可以新建空仓库。
-- **用外部程序打开**：工具栏「↗ 打开」用编辑器（默认 VS Code，可改成 cursor、idea 等）、终端、访达 / 资源管理器打开仓库；右键文件也能用编辑器打开。
-- **交互式变基**：右键提交「从这里开始交互式变基…」，拖动调整顺序，选择保留 / 合并到下面 / 删除，点提交说明直接修改。不需要记 `rebase -i` 命令，也不会打开命令行编辑器。
-- **拖拽合并 / 变基**：把一个分支标签（提交图或左侧栏里）拖到另一个分支上，选择合并还是变基。
-- **自动获取**：默认每 10 分钟在后台获取一次远程更新，不弹进度框，只记在日志里；右上角 ⚙ 里可以改成 5 / 30 分钟或关闭。
-- **主题**：工具栏右边切换深色（默认，配色参考 GitKraken）/ 浅色 / 跟随系统。
-- **快捷键**（Windows 上把 ⌘ 换成 Ctrl）：
+English · [简体中文](README.zh-CN.md)
 
-| 快捷键 | 作用 |
+[**Download**](https://github.com/ADroidCoder/GItTree/releases/latest) · [Features](#features) · [Performance](#performance) · [Building from source](#building-from-source)
+
+</div>
+
+---
+
+## Why GitTree
+
+Most Git GUIs slow down as a repository grows: opening takes seconds, scrolling stutters, the branch list freezes. GitTree is designed around the opposite goal — **every interaction must stay instant, no matter how big the repository is.**
+
+- **Fast by design** — history is read from Git's commit-graph index, the graph layout is computed in O(n), and every list is virtualized. Opening the Git project itself (85k commits, 1,000+ refs) takes about 120 ms.
+- **Native and lightweight** — an installer of only a few megabytes, built on the system WebView instead of a bundled Chromium.
+- **Behaves exactly like the command line** — all write operations are delegated to your installed `git`, so hooks, GPG signing, SSH keys and credential managers work the same way they do in the terminal.
+- **Free and open source** — Apache 2.0, no account, no telemetry, no paid tier.
+
+## Download
+
+Get the latest installer from the [**Releases page**](https://github.com/ADroidCoder/GItTree/releases/latest).
+
+| Platform | File |
 |---|---|
-| ⌘O / ⌘T | 打开仓库（新标签页） |
-| ⌘1 ~ ⌘9 | 切换到第 N 个标签页 |
-| ⌘F | 搜索提交（回车下一个，Shift+回车上一个） |
-| ⌘R / F5 | 刷新 |
-| ⌘Z | 撤销上一步操作（在输入框里时是撤销文字） |
-| ↑ ↓ / j k | 在提交之间移动 |
-| ⌘Enter | 提交（在提交说明输入框里） |
-| Esc | 关闭 diff |
+| macOS (Apple Silicon) | `GitTree_<version>_aarch64.dmg` |
+| macOS (Intel) | `GitTree_<version>_x64.dmg` |
+| Windows 10 / 11 (x64) | `GitTree_<version>_x64-setup.exe` or `GitTree_<version>_x64_en-US.msi` |
 
-## 为什么快
+**Requirement:** [Git](https://git-scm.com/downloads) must be installed and available on `PATH`.
 
-- **历史读取**：优先读取 Git 的 commit-graph 索引文件，不用解压提交对象；没有索引时会在后台自动生成一份（和 `git gc` 生成的是同一个文件）。
-- **按需加载**：作者和提交说明先读屏幕上能看到的行，其余的在后台多线程补全。
-- **图布局**：一次性 O(n) 算完，按 256 行分块建索引，滚动时每次查询约 1 微秒。
-- **界面虚拟化**：提交列表和 diff 都只渲染可见的几十行，分支线用 Canvas 画；滚动条是自己实现的，不受浏览器元素高度上限限制，百万级提交也能滚动。
+> [!NOTE]
+> The installers are not code-signed yet.
+> - **macOS:** if the system says the app "is damaged" or "cannot be opened", run `xattr -cr /Applications/GitTree.app` once, or right-click the app and choose **Open**.
+> - **Windows:** if SmartScreen appears, click **More info → Run anyway**.
 
-在 git 官方仓库（8.5 万提交、1000+ 引用）上实测：
+## Features
 
-| 场景 | 耗时 |
+### History and branches
+- **Commit graph** in the style of GitKraken, with a dark theme by default (light and system themes available).
+- **Multiple repositories in tabs**; open tabs are restored on the next launch.
+- **Focus mode** — show only the current branch, or any chosen set of branches, to declutter repositories with many branches. Filters are remembered per repository.
+- **Search** commits by message, author or hash.
+- **Drag and drop** a branch onto another branch to merge or rebase.
+
+### Everyday operations
+- Stage, unstage and discard by file or by hunk; commit and amend.
+- Fetch, pull and push with **live progress, elapsed time and cancellation**. Every executed git command and its full output is available in the log panel.
+- **In-app authentication** — when Git asks for a username, password, personal access token or SSH key passphrase, GitTree shows a dialog. Credentials are stored by your system credential manager (macOS Keychain / Windows Credential Manager).
+- **Background auto-fetch** (every 10 minutes by default, configurable or off).
+- **Stash** — browse stashed files and diffs (including untracked files), stash only selected files, apply / pop / drop.
+- Branches, tags, merge, rebase, cherry-pick, revert and reset from context menus.
+- **Clone** with progress, or **create** a new repository.
+- **Open in** your editor (VS Code by default; Cursor, IntelliJ IDEA etc. supported), terminal, or Finder / Explorer.
+
+### Advanced tools
+- **Undo** (⌘Z / Ctrl+Z) for commits, checkouts, branch and tag changes, merges, rebases, cherry-picks, resets, pulls and Git Flow actions — up to 50 steps. Undo is refused if the repository was changed elsewhere in the meantime, so newer work is never overwritten.
+- **Conflict resolution** — side-by-side *current* vs *incoming* view for each conflict; pick a side, take both, use the base version or edit by hand. Non-UTF-8 files (e.g. GBK) are preserved byte for byte.
+- **Interactive rebase** without a terminal editor — reorder commits by dragging, squash or drop them, and edit messages inline.
+- **File history** that follows renames, and **Blame** with per-line author, date and commit.
+- **Git Flow** — start and finish feature / bugfix / release / hotfix branches from one panel. Compatible with the `git flow` CLI and SourceTree configuration.
+
+### Task board
+A global Kanban board (to do / in progress / review / done, columns customizable) with assignees, priorities and due dates. Tasks can be linked to a repository and branch. Data is stored locally and never written into your repositories.
+
+## Keyboard shortcuts
+
+On Windows, use Ctrl instead of ⌘.
+
+| Shortcut | Action |
 |---|---|
-| 打开仓库（有 commit-graph） | ~120 ms |
-| 打开仓库（没有 commit-graph） | ~520 ms |
-| 图布局计算 | 3 ms |
-| 读取一屏 60 行的说明 | 2 ms |
-| 滚动时的区间查询 | ~1 µs |
+| ⌘O / ⌘T | Open a repository in a new tab |
+| ⌘1 – ⌘9 | Switch to tab N |
+| ⌘F | Search commits (Enter / Shift+Enter for next / previous) |
+| ⌘R / F5 | Refresh |
+| ⌘Z | Undo the last operation (undoes text when an input is focused) |
+| ↑ ↓ / j k | Move between commits |
+| ⌘Enter | Commit (in the commit message box) |
+| Esc | Close the diff |
 
-自己测：`cargo run --release -p gittree-core --example bench -- <仓库路径>`
+## Performance
 
-## 开发环境
+Measured on the [git/git](https://github.com/git/git) repository (≈85,000 commits, 1,000+ refs):
 
-需要：Rust（1.85+）、Node.js（20+）、Git。Windows 还需要 [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)（Win10/11 一般自带）和 Visual Studio C++ 生成工具。
+| Scenario | Time |
+|---|---|
+| Open repository (with commit-graph) | ~120 ms |
+| Open repository (without commit-graph) | ~520 ms |
+| Graph layout | 3 ms |
+| Load messages for one screen (60 rows) | 2 ms |
+| Range query while scrolling | ~1 µs |
+
+How it is achieved:
+
+- **Commit-graph first** — history is read from Git's `commit-graph` file without inflating commit objects. If the file is missing, GitTree generates it in the background (the same file `git gc` writes).
+- **Lazy loading** — authors and messages are loaded for visible rows first; the rest are filled in on background threads.
+- **O(n) graph layout** with a chunked index (256 rows per chunk), so each scroll query costs about a microsecond.
+- **Full virtualization** — only the visible rows of the commit list and diffs are rendered, branch lines are drawn on a canvas, and a custom scrollbar avoids the browser's maximum element height, so even millions of commits scroll smoothly.
+
+Run the benchmark yourself:
 
 ```bash
-npm install                          # 第一次运行前安装依赖
-cargo test -p gittree-core           # 核心库测试
-npm run check                        # 前端类型检查
+cargo run --release -p gittree-core --example bench -- /path/to/repo
 ```
 
-## 打包
+## Building from source
+
+**Prerequisites**
+
+- [Rust](https://rustup.rs/) 1.85 or newer
+- [Node.js](https://nodejs.org/) 20 or newer
+- Git
+- Windows only: [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) (bundled with Windows 10/11) and the Visual Studio C++ Build Tools
 
 ```bash
-npm run tauri build
+git clone https://github.com/ADroidCoder/GItTree.git
+cd GItTree
+npm install
+
+npm run tauri dev                           # run in development mode
+GITTREE_REPO=/path/to/repo npm run tauri dev # open a repository on startup
+npm run tauri build                         # build installers
 ```
 
-- macOS 产物：`target/release/bundle/dmg/*.dmg` 和 `.app`
-- Windows 产物：`target/release/bundle/msi/*.msi` 和 `nsis/*.exe`
+Build output:
 
-Windows 安装包需要在 Windows 上打包，或者用 GitHub Actions：推送一个 `v` 开头的标签（例如 `git tag v0.1.0 && git push origin v0.1.0`），或在 Actions 页面手动运行「打包」，会同时打出 Windows（.msi / .exe）和 macOS（.dmg）安装包。
+- macOS: `target/release/bundle/dmg/*.dmg` and `target/release/bundle/macos/GitTree.app`
+- Windows: `target/release/bundle/msi/*.msi` and `target/release/bundle/nsis/*.exe`
 
-## 目录结构
+**Tests**
+
+```bash
+cargo test -p gittree-core   # core library
+npm run check                # frontend type check
+```
+
+**Releases** are built by [GitHub Actions](.github/workflows/build.yml). Every push builds installers for all platforms (downloadable from the run's *Artifacts*); pushing a tag such as `v0.2.0` also publishes a GitHub Release with the installers attached.
+
+## Project structure
 
 ```
-crates/gittree-core/   核心库（不依赖界面，可单独测试）
-  src/log.rs           读取提交历史、引用、领先/落后数
-  src/graph.rs         分支图泳道布局
-  src/diff.rs          提交详情、文件 diff、按代码块生成补丁
-  src/ops.rs           调用系统 git 执行的所有修改操作
+crates/gittree-core/   Core library, UI-independent and testable on its own
+  src/log.rs           Commit history, refs, ahead/behind counts
+  src/graph.rs         Branch graph lane layout
+  src/diff.rs          Commit details, file diffs, hunk patches
+  src/ops.rs           All write operations, executed by the system git
   src/flow.rs          Git Flow
-  src/undo.rs          撤销
-  src/conflict.rs      冲突解析与解决
-  src/history.rs       文件历史、Blame
-  src/rebase.rs        交互式变基
-src-tauri/             Tauri 桌面程序，把核心库暴露给界面
-src/                   Svelte 界面
+  src/undo.rs          Undo
+  src/conflict.rs      Conflict parsing and resolution
+  src/history.rs       File history and blame
+  src/rebase.rs        Interactive rebase
+src-tauri/             Tauri desktop app exposing the core library to the UI
+src/                   Svelte 5 user interface
 ```
 
-修改仓库的操作（提交、合并、推送等）都交给系统安装的 `git` 执行，所以 hooks、GPG 签名、SSH 密钥、凭据管理器的行为和命令行完全一致。
+**Tech stack:** Rust · [gitoxide](https://github.com/GitoxideLabs/gitoxide) · [libgit2](https://libgit2.org/) · [Tauri 2](https://tauri.app/) · [Svelte 5](https://svelte.dev/) · TypeScript
 
-## 开源协议
+## Contributing
 
-本项目基于 [Apache License 2.0](LICENSE) 开源：可以免费用于个人和商业用途，可以修改和再发布；再发布时需要保留版权和协议声明，并注明修改过的地方。
+Issues and pull requests are welcome. Before submitting a pull request, please make sure `cargo test -p gittree-core` and `npm run check` pass.
+
+## License
+
+GitTree is licensed under the [Apache License 2.0](LICENSE). You may use it for personal and commercial purposes, modify it and redistribute it, provided you keep the copyright and license notices and state any changes you made.

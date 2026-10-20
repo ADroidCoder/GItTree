@@ -1,6 +1,6 @@
 # 打包 Windows 和 macOS 安装包。
 # - 在 Actions 页面手动运行，或者推送任意分支：安装包在这次运行的 Artifacts 里下载
-# - 推送 v 开头的标签（例如 v0.1.0）：额外创建一个草稿 Release，附上安装包
+# - 推送 v 开头的标签（例如 v0.1.0）：所有平台打包成功后发布一个 Release，附上安装包
 name: 打包
 
 on:
@@ -51,6 +51,11 @@ jobs:
             os: macos-latest
             files: |
               target/release/bundle/dmg/*.dmg
+          - name: macOS (Intel)
+            os: macos-latest
+            target: x86_64-apple-darwin
+            files: |
+              target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -59,17 +64,34 @@ jobs:
           node-version: 20
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
       - run: npm ci
-      - run: npx tauri build
+      - run: npx tauri build ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
       - uses: actions/upload-artifact@v4
         with:
-          name: GitTree-${{ matrix.os }}
+          name: GitTree-${{ matrix.name }}
           path: ${{ matrix.files }}
           if-no-files-found: error
-      - name: 上传到 Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+
+  release:
+    name: 发布 Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          draft: true
-          files: ${{ matrix.files }}
+          path: dist
+          merge-multiple: true
+      - run: ls -la dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: GitTree ${{ github.ref_name }}
+          body_path: .github/release-notes.md
+          generate_release_notes: true
+          files: dist/*
