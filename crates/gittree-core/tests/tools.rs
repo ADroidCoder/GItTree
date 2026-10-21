@@ -288,3 +288,63 @@ fn push_branch_created_from_another_remote_branch() {
     ops::push(&local, false).unwrap();
     assert_eq!(ops::git(&remote, &["rev-parse", "feature/b"]).unwrap(), ops::git(&local, &["rev-parse", "HEAD"]).unwrap());
 }
+
+#[test]
+fn merge_modes() {
+    use ops::MergeMode;
+    let dir = temp_repo("merge-modes");
+    let base = commit_file(&dir, "a.txt", "1\n", "初始");
+    ops::git(&dir, &["switch", "-q", "-c", "feat"]).unwrap();
+    commit_file(&dir, "b.txt", "b\n", "功能 1");
+    let feat = commit_file(&dir, "c.txt", "c\n", "功能 2");
+    ops::checkout(&dir, "main").unwrap();
+    let parents = |r: &str| ops::git(&dir, &["rev-list", "--parents", "-n1", r]).unwrap().split_whitespace().count() - 1;
+
+    // 可以快进时 --no-ff 也会生成合并提交
+    ops::merge_with(&dir, "feat", MergeMode::NoFf, None).unwrap();
+    assert_eq!(parents("HEAD"), 2);
+    ops::reset(&dir, &base, "hard").unwrap();
+
+    // 只快进
+    ops::merge_with(&dir, "feat", MergeMode::FfOnly, None).unwrap();
+    assert_eq!(ops::git(&dir, &["rev-parse", "HEAD"]).unwrap().trim(), feat);
+    ops::reset(&dir, &base, "hard").unwrap();
+
+    // 分叉后只快进会失败，并给出说明
+    commit_file(&dir, "d.txt", "d\n", "主线");
+    let err = ops::merge_with(&dir, "feat", MergeMode::FfOnly, None).unwrap_err().to_string();
+    assert!(err.contains("快进") || err.contains("fast-forward"), "{err}");
+
+    // 压缩成一个普通提交
+    ops::merge_with(&dir, "feat", MergeMode::Squash, Some("合入功能")).unwrap();
+    assert_eq!(parents("HEAD"), 1);
+    assert_eq!(ops::git(&dir, &["log", "-1", "--format=%s"]).unwrap().trim(), "合入功能");
+    assert!(dir.join("b.txt").exists() && dir.join("c.txt").exists());
+    assert!(ops::git(&dir, &["status", "--porcelain"]).unwrap().trim().is_empty());
+
+    // 已经合过了：不会产生空提交
+    let head = ops::git(&dir, &["rev-parse", "HEAD"]).unwrap();
+    ops::merge_with(&dir, "feat", MergeMode::Squash, None).unwrap();
+    assert_eq!(ops::git(&dir, &["rev-parse", "HEAD"]).unwrap(), head);
+}
+
+#[test]
+fn cherry_pick_and_revert_many() {
+    let dir = temp_repo("pick-many");
+    commit_file(&dir, "a.txt", "1\n", "初始");
+    ops::git(&dir, &["switch", "-q", "-c", "feat"]).unwrap();
+    let b = commit_file(&dir, "b.txt", "b\n", "功能 1");
+    let c = commit_file(&dir, "c.txt", "c\n", "功能 2");
+    ops::checkout(&dir, "main").unwrap();
+    let log = || ops::git(&dir, &["log", "--format=%s"]).unwrap();
+
+    // 按给出的顺序（旧的在前）依次拣选
+    ops::cherry_pick(&dir, &[b.clone(), c.clone()]).unwrap();
+    assert_eq!(log(), "功能 2\n功能 1\n初始\n");
+
+    // 还原时新的在前，每个提交一个还原提交
+    let picked: Vec<String> = ops::git(&dir, &["rev-list", "-n2", "HEAD"]).unwrap().lines().map(String::from).collect();
+    ops::revert(&dir, &picked).unwrap();
+    assert!(!dir.join("b.txt").exists() && !dir.join("c.txt").exists());
+    assert_eq!(log().lines().count(), 5);
+}

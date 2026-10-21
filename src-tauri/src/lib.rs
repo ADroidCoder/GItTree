@@ -458,11 +458,18 @@ enum Op {
     DeleteBranch { name: String, force: bool },
     DeleteRemoteBranch { name: String },
     RenameBranch { old: String, new: String, remote: bool },
-    Merge { target: String },
+    Merge {
+        target: String,
+        #[serde(default)]
+        mode: ops::MergeMode,
+        /// 压缩合并时新提交的说明
+        #[serde(default)]
+        message: Option<String>,
+    },
     Rebase { onto: String },
     Sequencer { kind: String, action: String },
-    CherryPick { oid: String },
-    Revert { oid: String },
+    CherryPick { oids: Vec<String> },
+    Revert { oids: Vec<String> },
     Reset { oid: String, mode: String },
     CreateTag { name: String, oid: String, message: Option<String> },
     DeleteTag { name: String },
@@ -488,7 +495,14 @@ enum Op {
     /// 整个文件使用当前（theirs = false）或传入（theirs = true）的版本
     ResolveSide { path: String, theirs: bool },
     /// 拖拽：切换到 branch 并合并 source
-    MergeInto { branch: String, source: String },
+    MergeInto {
+        branch: String,
+        source: String,
+        #[serde(default)]
+        mode: ops::MergeMode,
+        #[serde(default)]
+        message: Option<String>,
+    },
     /// 拖拽：把 branch 变基到 onto
     RebaseBranch { branch: String, onto: String },
     RebaseInteractive { from: String, steps: Vec<rebase::Step> },
@@ -525,6 +539,14 @@ enum Op {
     CheckoutPull { remote: String, remote_ref: String, local: String, number: u64 },
 }
 
+/// 撤销记录里的提交说明：一个提交显示短哈希，多个显示个数
+fn commits_label(oids: &[String]) -> String {
+    match oids {
+        [oid] => oid[..oid.len().min(7)].to_string(),
+        _ => tr!("{} 个提交", "{} commits", oids.len()),
+    }
+}
+
 impl Op {
     /// 可以撤销的操作：返回撤销记录里显示的名称，以及怎样移回当前分支
     fn undo_label(&self) -> Option<(String, undo::Mode)> {
@@ -547,17 +569,17 @@ impl Op {
             Op::CheckoutDetached { oid } => (tr!("检出提交 {}", "checkout {}", &oid[..oid.len().min(7)]), Keep),
             Op::CreateBranch { name, .. } => (tr!("新建分支 {name}", "create branch {name}"), Keep),
             Op::DeleteBranch { name, .. } => (tr!("删除分支 {name}", "delete branch {name}"), Keep),
-            Op::Merge { target } => (tr!("合并 {target}", "merge {target}"), Keep),
+            Op::Merge { target, .. } => (tr!("合并 {target}", "merge {target}"), Keep),
             Op::Rebase { onto } => (tr!("变基到 {onto}", "rebase onto {onto}"), Keep),
-            Op::CherryPick { oid } => (tr!("拣选 {}", "cherry-pick {}", &oid[..oid.len().min(7)]), Keep),
-            Op::Revert { oid } => (tr!("还原 {}", "revert {}", &oid[..oid.len().min(7)]), Keep),
+            Op::CherryPick { oids } => (tr!("拣选 {}", "cherry-pick {}", commits_label(oids)), Keep),
+            Op::Revert { oids } => (tr!("还原 {}", "revert {}", commits_label(oids)), Keep),
             Op::Reset { oid, mode } => (tr!("重置到 {}（{mode}）", "reset to {} ({mode})", &oid[..oid.len().min(7)]), Keep),
             Op::CreateTag { name, .. } => (tr!("新建标签 {name}", "create tag {name}"), Keep),
             Op::DeleteTag { name } => (tr!("删除标签 {name}", "delete tag {name}"), Keep),
             Op::Pull => (tr!("拉取", "pull"), Keep),
             Op::FlowStart { kind, name, .. } => (tr!("开始 {kind:?} {name}", "start {kind:?} {name}"), Keep),
             Op::FlowFinish { kind, name, .. } => (tr!("完成 {kind:?} {name}", "finish {kind:?} {name}"), Keep),
-            Op::MergeInto { branch, source } => (tr!("把 {source} 合并到 {branch}", "merge {source} into {branch}"), Keep),
+            Op::MergeInto { branch, source, .. } => (tr!("把 {source} 合并到 {branch}", "merge {source} into {branch}"), Keep),
             Op::RebaseBranch { branch, onto } => (tr!("把 {branch} 变基到 {onto}", "rebase {branch} onto {onto}"), Keep),
             Op::RebaseInteractive { steps, .. } => (tr!("交互式变基（{} 个提交）", "interactive rebase ({} commits)", steps.len()), Keep),
             Op::CheckoutPull { number, .. } => (tr!("检出 PR #{number}", "checkout PR #{number}"), Keep),
@@ -792,6 +814,21 @@ async fn identity_set_dirs(app: AppHandle, id: String, dirs: Vec<String>) -> Cmd
     blocking(move || identity::set_dirs(&identity_store(&app)?, &id, &dirs)).await
 }
 
+/// 全局配置里的提交身份；在用户主目录下执行，不受某个仓库的设置影响
+fn home_dir(app: &AppHandle) -> Result<PathBuf, Error> {
+    Ok(app.path().home_dir()?)
+}
+
+#[tauri::command]
+async fn global_identity(app: AppHandle) -> CmdResult<identity::Identity> {
+    blocking(move || Ok(identity::global(&home_dir(&app)?))).await
+}
+
+#[tauri::command]
+async fn set_global_identity(app: AppHandle, name: String, email: String) -> CmdResult<()> {
+    blocking(move || identity::set_global(&home_dir(&app)?, &name, &email)).await
+}
+
 /// 用系统默认浏览器打开网页（只允许 http / https）
 #[tauri::command]
 fn open_url(url: String) -> CmdResult<()> {
@@ -979,11 +1016,11 @@ fn run_op(dir: &Path, git_dir: &Path, op: Op) -> Result<String, Error> {
             Op::DeleteBranch { name, force } => done(ops::delete_branch(d, &name, force)),
             Op::DeleteRemoteBranch { name } => done(ops::delete_remote_branch(d, &name)),
             Op::RenameBranch { old, new, remote } => ops::rename_branch(d, &old, &new, remote),
-            Op::Merge { target } => ops::merge(d, &target),
+            Op::Merge { target, mode, message } => ops::merge_with(d, &target, mode, message.as_deref()),
             Op::Rebase { onto } => ops::rebase(d, &onto),
             Op::Sequencer { kind, action } => ops::sequencer(d, &kind, &action),
-            Op::CherryPick { oid } => ops::cherry_pick(d, &oid),
-            Op::Revert { oid } => ops::revert(d, &oid),
+            Op::CherryPick { oids } => ops::cherry_pick(d, &oids),
+            Op::Revert { oids } => ops::revert(d, &oids),
             Op::Reset { oid, mode } => done(ops::reset(d, &oid, &mode)),
             Op::CreateTag { name, oid, message } => done(ops::create_tag(d, &name, &oid, message.as_deref())),
             Op::DeleteTag { name } => done(ops::delete_tag(d, &name)),
@@ -999,7 +1036,7 @@ fn run_op(dir: &Path, git_dir: &Path, op: Op) -> Result<String, Error> {
             Op::FlowPublish { kind, name } => flow::publish(d, kind, &name),
             Op::ResolveConflict { path, choices } => done(conflict::resolve(d, &path, &choices)),
             Op::ResolveSide { path, theirs } => done(conflict::resolve_side(d, &path, theirs)),
-            Op::MergeInto { branch, source } => ops::merge_into(d, &branch, &source),
+            Op::MergeInto { branch, source, mode, message } => ops::merge_into(d, &branch, &source, mode, message.as_deref()),
             Op::RebaseBranch { branch, onto } => ops::rebase_branch(d, &branch, &onto),
             Op::RebaseInteractive { from, steps } => rebase::run(d, git_dir, &from, &steps),
             Op::AddRemote { name, url } => done(ops::add_remote(d, &name, &url)),
@@ -1118,6 +1155,8 @@ pub fn run() {
             identity_save_profile,
             identity_delete_profile,
             identity_set_dirs,
+            global_identity,
+            set_global_identity,
             forges::forge_info,
             forges::forge_new_pull_url,
             forges::forge_configure,

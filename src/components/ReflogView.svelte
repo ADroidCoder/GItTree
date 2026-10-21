@@ -106,7 +106,7 @@
           label: t("Cherry-pick 到当前分支"),
           action: async () => {
             if (await confirm("Cherry-pick", t("把提交 {0} 应用到当前分支？", short), t("确定")))
-              await tab.run({ op: "cherry_pick", oid: e.oid }, t("正在 cherry-pick…"));
+              await tab.run({ op: "cherry_pick", oids: [e.oid] }, t("正在 cherry-pick…"));
           },
         },
         { label: t("把当前分支重置到这里…"), danger: true, action: () => resetTo(e) },

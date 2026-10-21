@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { savedLang, setLang, t, type Lang } from "../lib/i18n";
+  import { t } from "../lib/i18n";
   import { checkUpdate, updater } from "../lib/updater.svelte";
   import { shareUrl } from "../lib/util";
-  import { notifyDialog } from "../lib/notify.svelte";
   import FocusPicker from "./FocusPicker.svelte";
   import { api } from "../lib/api";
-  import { addRemote, addSubmodule, addWorktree, app, chooseEditor, copyRemoteUrl, createPull, dialog, errorText, forcePush, openRemoteWeb, openFlow, openIn, setAutoFetch, setTheme, startBisect, toast, trackWithLfs, type RepoTab, type Theme } from "../lib/store.svelte";
+  import { addRemote, addSubmodule, addWorktree, app, copyRemoteUrl, createPull, dialog, errorText, forcePush, openRemoteWeb, openFlow, openIn, openSettings, startBisect, toast, trackWithLfs, type RepoTab } from "../lib/store.svelte";
   import { isMac } from "../lib/util";
   import RepoPicker from "./RepoPicker.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
@@ -14,6 +13,36 @@
   let { tab, onOpenFolder }: { tab: RepoTab | undefined; onOpenFolder: () => void } = $props();
 
   let picker = $state<{ x: number; y: number } | null>(null);
+
+  /** 窗口窄到放不下时只显示按钮图标；记下放下文字需要的宽度，够了再恢复 */
+  let bar = $state<HTMLDivElement>();
+  let leftEl = $state<HTMLDivElement>();
+  let rightEl = $state<HTMLDivElement>();
+  let compact = $state(false);
+  let fullWidth = 0;
+  function fit() {
+    if (!bar) return;
+    const over = (el?: HTMLElement) => (el ? Math.max(0, el.scrollWidth - el.clientWidth) : 0);
+    const extra = over(leftEl) + over(rightEl);
+    if (!compact && extra > 1) {
+      compact = true;
+      fullWidth = bar.clientWidth + extra;
+    } else if (compact && bar.clientWidth >= fullWidth) {
+      compact = false;
+      requestAnimationFrame(fit);
+    }
+  }
+  $effect(() => {
+    if (!bar) return;
+    const ro = new ResizeObserver(fit);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  });
+  // 分支名、语言变了也可能放不下
+  $effect(() => {
+    void [tab?.name, tab?.repo?.head?.branch, focusLabel, tab?.search.hits.length, tab?.repo];
+    requestAnimationFrame(fit);
+  });
   let branchMenu = $state<{ x: number; y: number } | null>(null);
   let focusPicker = $state<{ x: number; y: number } | null>(null);
 
@@ -41,11 +70,6 @@
     flowPanel = pos;
   }
 
-  const THEMES: { value: Theme; label: string; icon: string }[] = [
-    { value: "dark", label: t("深色"), icon: "☾" },
-    { value: "light", label: t("浅色"), icon: "☀" },
-    { value: "system", label: t("跟随系统"), icon: "◐" },
-  ];
   function showOpenMenu(e: MouseEvent) {
     if (!tab) return;
     const tb = tab;
@@ -63,7 +87,7 @@
         ]),
         ...(tb.remotes.length ? [] : [{ label: t("添加远程仓库…"), action: () => addRemote(tb) }]),
         "sep",
-        { label: t("设置编辑器命令…"), action: chooseEditor },
+        { label: t("设置编辑器命令…"), action: () => openSettings("tools") },
       ],
     };
   }
@@ -112,50 +136,6 @@
         { label: t("强制推送…"), hint: "--force-with-lease", danger: true, action: () => forcePush(tb) },
       ],
     };
-  }
-
-  const AUTO_FETCH = [0, 5, 10, 30];
-  function showThemeMenu(e: MouseEvent) {
-    flowMenu = {
-      ...below(e),
-      items: [
-        ...THEMES.map((t) => ({
-          label: `${t.icon}  ${t.label}${app.theme === t.value ? "  ✓" : ""}`,
-          action: () => setTheme(t.value),
-        })),
-        "sep",
-        ...AUTO_FETCH.map((m) => ({
-          label: `${m ? t("每 {0} 分钟自动获取", m) : t("不自动获取")}${app.autoFetch === m ? "  ✓" : ""}`,
-          action: () => setAutoFetch(m),
-        })),
-        "sep",
-        ...LANGS.map((l) => ({
-          label: `${l.label}${savedLang() === l.value ? "  ✓" : ""}`,
-          action: () => changeLang(l.value),
-        })),
-        "sep",
-        { label: t("提醒与通知…"), action: () => (notifyDialog.open = true) },
-        {
-          label: updater.update ? t("安装新版本 {0}…", updater.update.version) : t("检查更新…"),
-          hint: updater.version ? `v${updater.version}` : undefined,
-          action: () => (updater.update ? (updater.open = true) : checkUpdate(true)),
-        },
-      ],
-    };
-  }
-
-  /** 语言名用它自己的语言写，看不懂当前界面也能找到 */
-  const LANGS: { value: Lang | null; label: string }[] = [
-    { value: null, label: t("🌐  跟随系统语言") },
-    { value: "zh", label: "🌐  中文" },
-    { value: "en", label: "🌐  English" },
-  ];
-
-  function changeLang(l: Lang | null) {
-    if (savedLang() === l) return;
-    // 切换语言会重新加载界面，正在执行的操作的进度就看不到了
-    if (app.tabs.some((x) => x.busy)) return toast(t("有操作正在进行，完成后再切换语言"), "error");
-    setLang(l);
   }
 
   /** 当前分支是 Git Flow 分支时，按钮上显示类型 */
@@ -257,8 +237,8 @@
   }
 </script>
 
-<div class="toolbar">
-  <div class="left">
+<div class="toolbar" class:compact bind:this={bar}>
+  <div class="left" bind:this={leftEl}>
     <div class="picker-group">
       <span class="plabel">{t("仓库")}</span>
       <button class="picker" onclick={(e) => (picker = below(e))}>
@@ -305,7 +285,7 @@
         onclick={() => tab.undo()}
         title={tab.repo.undo ? t("撤销：{0} ({1}Z)", tab.repo.undo, isMac ? "⌘" : "Ctrl+") : t("没有可以撤销的操作")}
       >
-        <span class="ico">↶</span>{t("撤销")}
+        <span class="ico">↶</span><span class="lbl">{t("撤销")}</span>
       </button>
       <span class="sep"></span>
       <button
@@ -313,43 +293,43 @@
         onclick={() => tab.run({ op: "fetch" }, t("正在获取远程更新…"))}
         title={t("获取所有远程仓库的更新（不修改本地分支）{0}", app.autoFetch ? t("\n每 {0} 分钟自动获取一次，可在右上角设置里修改", app.autoFetch) : "")}
       >
-        <span class="ico">⟳</span>{t("获取")}
+        <span class="ico">⟳</span><span class="lbl">{t("获取")}</span>
       </button>
       <button class="tb" onclick={() => tab.run({ op: "pull" }, t("正在拉取…"))} title={t("拉取当前分支")}>
-        <span class="ico">⬇</span>{t("拉取")}
+        <span class="ico">⬇</span><span class="lbl">{t("拉取")}</span>
         {#if headRef?.behind}<span class="badge">{headRef.behind}</span>{/if}
       </button>
       <button class="tb" onclick={() => tab.run({ op: "push", force: false }, t("正在推送…"))} title={t("推送当前分支")}>
-        <span class="ico">⬆</span>{t("推送")}
+        <span class="ico">⬆</span><span class="lbl">{t("推送")}</span>
         {#if headRef?.ahead}<span class="badge">{headRef.ahead}</span>{/if}
       </button>
       <button class="tb more" onclick={showPushMenu} title={t("更多推送选项")}>▾</button>
       <span class="sep"></span>
-      <button class="tb" onclick={newBranch} title={t("新建分支")}><span class="ico">⑂</span>{t("分支")}</button>
-      <button class="tb" onclick={stash} title={t("Stash 当前改动")}><span class="ico">⊟</span>Stash</button>
+      <button class="tb" onclick={newBranch} title={t("新建分支")}><span class="ico">⑂</span><span class="lbl">{t("分支")}</span></button>
+      <button class="tb" onclick={stash} title={t("Stash 当前改动")}><span class="ico">⊟</span><span class="lbl">Stash</span></button>
       <button
         class="tb"
         disabled={!tab.stashes.length}
         onclick={() => tab.run({ op: "stash", action: "pop", index: 0 }, t("正在恢复 stash…"))}
-        title={t("恢复最近一次 stash")}><span class="ico">⊞</span>Pop</button
+        title={t("恢复最近一次 stash")}><span class="ico">⊞</span><span class="lbl">Pop</span></button
       >
       <span class="sep"></span>
       <button class="tb" onclick={showFlowMenu} title="Git Flow：feature / release / hotfix">
-        <span class="ico">⇶</span>Git Flow
+        <span class="ico">⇶</span><span class="lbl">Git Flow</span>
         {#if curFlow}<span class="badge flow">{curFlow.kind}</span>{/if}
       </button>
       <button class="tb" onclick={showToolsMenu} title={t("Reflog、PR、工作树、子模块、二分查错、LFS、提交身份")}>
-        <span class="ico">⋯</span>{t("更多")}
+        <span class="ico">⋯</span><span class="lbl">{t("更多")}</span>
         {#if tab.bisect?.active}<span class="badge flow">bisect</span>{/if}
       </button>
     </div>
 
-    <div class="right">
+    <div class="right" bind:this={rightEl}>
       <button class="tb" onclick={showOpenMenu} title={t("用编辑器、终端或文件管理器打开这个仓库")}>
-        <span class="ico">↗</span>{t("打开")}
+        <span class="ico">↗</span><span class="lbl">{t("打开")}</span>
       </button>
       <button class="tb" class:on={tab.logOpen} onclick={() => (tab.logOpen = !tab.logOpen)} title={t("查看 git 命令和输出日志")}>
-        <span class="ico">≡</span>{t("日志")}
+        <span class="ico">≡</span><span class="lbl">{t("日志")}</span>
       </button>
       <div class="search">
         <span class="sico">⌕</span>
@@ -370,7 +350,7 @@
       <button class="tb icon" onclick={() => tab.refresh()} title={t("刷新")}>↻</button>
     </div>
   {/if}
-  <button class="tb icon theme" onclick={showThemeMenu} title={t("设置：主题、自动获取、语言")}>⚙</button>
+  <button class="tb icon theme" onclick={() => openSettings()} title={t("设置 ({0},)", isMac ? "⌘" : "Ctrl+")}>⚙</button>
 </div>
 
 {#if picker}
@@ -460,6 +440,9 @@
     flex-direction: column;
     min-width: 0;
   }
+  .left > .picker-group:first-child {
+    flex-shrink: 2;
+  }
   .plabel {
     padding-left: 8px;
     color: var(--text-faint);
@@ -471,6 +454,7 @@
     gap: 6px;
     height: 24px;
     max-width: 240px;
+    min-width: 0;
     padding: 0 8px;
     border: 0;
     background: none;
@@ -497,6 +481,10 @@
     font-size: 12px;
     white-space: nowrap;
     flex-shrink: 0;
+  }
+  .compact .focus-btn {
+    flex-shrink: 1;
+    min-width: 60px;
   }
   .focus-btn.on {
     background: var(--accent);
@@ -555,6 +543,24 @@
     background: var(--bg-selected);
     color: var(--text);
   }
+  /* 紧凑模式：按钮只留图标，文字看 title 提示 */
+  .compact .tb {
+    min-width: 34px;
+    padding: 0 6px;
+  }
+  .compact .tb .lbl {
+    display: none;
+  }
+  .compact .tb .ico {
+    font-size: 18px;
+  }
+  .compact .tb.more {
+    min-width: 0;
+    padding: 0;
+  }
+  .compact .sep {
+    margin: 0 3px;
+  }
   .tb.icon {
     min-width: 36px;
     font-size: 18px;
@@ -599,6 +605,8 @@
     align-items: center;
     gap: 4px;
     position: relative;
+    flex: 0 1 260px;
+    min-width: 120px;
   }
   .sico {
     position: absolute;
@@ -607,7 +615,9 @@
     pointer-events: none;
   }
   .search input {
-    width: 260px;
+    flex: 1;
+    width: 0;
+    min-width: 0;
     padding-left: 26px;
   }
   .hits {

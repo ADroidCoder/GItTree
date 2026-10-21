@@ -34,6 +34,24 @@ pub fn current(dir: &Path) -> Identity {
     id
 }
 
+/// 全局配置（~/.gitconfig）里的身份，不受当前目录和目录规则影响
+pub fn global(dir: &Path) -> Identity {
+    let get = |key: &str| git(dir, &["config", "--global", "--get", key]).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    Identity { name: get("user.name"), email: get("user.email"), scope: Some("global".into()), origin: None }
+}
+
+/// 设置全局身份；留空的项从全局配置里删掉
+pub fn set_global(dir: &Path, name: &str, email: &str) -> Result<(), Error> {
+    for (key, value) in [("user.name", name.trim()), ("user.email", email.trim())] {
+        if value.is_empty() {
+            let _ = git(dir, &["config", "--global", "--unset-all", key]);
+        } else {
+            git(dir, &["config", "--global", key, value])?;
+        }
+    }
+    Ok(())
+}
+
 /// 只给这个仓库设置身份（写到 .git/config）
 pub fn set_local(dir: &Path, name: &str, email: &str) -> Result<(), Error> {
     git(dir, &["config", "--local", "user.name", name.trim()])?;

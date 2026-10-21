@@ -55,6 +55,8 @@ Get the latest installer from the [**Releases page**](https://github.com/ADroidC
 - **Focus mode** — show only the current branch, or any chosen set of branches, to declutter repositories with many branches. Filters are remembered per repository.
 - **Search** commits by message, author or hash.
 - **Drag and drop** a branch onto another branch to merge or rebase.
+- **Merge options**: automatic (fast-forward when possible), always create a merge commit (`--no-ff`), fast-forward only (`--ff-only`), or squash into one commit (`--squash`). Your last choice is remembered.
+- **Multiple selection** in the commit graph: ⌘/Ctrl-click to add commits, Shift-click to select a range, then cherry-pick or revert them all at once, compare two commits, or copy their hashes.
 
 ### Everyday operations
 - Stage, unstage and discard by file, by hunk or **by individual lines**; commit and amend.

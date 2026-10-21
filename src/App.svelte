@@ -4,7 +4,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { api, type AskPassRequest, type ProgressEvent } from "./lib/api";
-  import { activate, activeTab, app, openRepo, preloadTasks, restoreTabs, startAutoFetch, tabById } from "./lib/store.svelte";
+  import { activate, activeTab, app, openRepo, openSettings, preloadTasks, restoreTabs, startAutoFetch, tabById } from "./lib/store.svelte";
   import { isMac } from "./lib/util";
   import TabBar from "./components/TabBar.svelte";
   import Toolbar from "./components/Toolbar.svelte";
@@ -19,10 +19,10 @@
   import AskPass from "./components/AskPass.svelte";
   import UpdateDialog from "./components/UpdateDialog.svelte";
   import { startUpdater, updater } from "./lib/updater.svelte";
-  import NotifyDialog from "./components/NotifyDialog.svelte";
+  import SettingsDialog from "./components/SettingsDialog.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import IdentityDialog from "./components/IdentityDialog.svelte";
-  import { notifyDialog, startNotifier } from "./lib/notify.svelte";
+  import { startNotifier } from "./lib/notify.svelte";
 
   let toolbar = $state<ReturnType<typeof Toolbar>>();
   const tab = $derived(activeTab());
@@ -70,6 +70,10 @@
       // ⌘K / ⌘⇧P 命令面板
       e.preventDefault();
       paletteOpen = !paletteOpen;
+    } else if (mod && e.key === ",") {
+      e.preventDefault();
+      if (app.settings) app.settings = null;
+      else openSettings();
     } else if (mod && key === "f") {
       e.preventDefault();
       toolbar?.focusSearch();
@@ -132,8 +136,8 @@
 {#if paletteOpen}
   <CommandPalette {toolbar} onOpenFolder={openFolder} onClose={() => (paletteOpen = false)} />
 {/if}
-{#if notifyDialog.open}
-  <NotifyDialog />
+{#if app.settings}
+  <SettingsDialog />
 {/if}
 {#if updater.open && updater.update}
   <UpdateDialog />

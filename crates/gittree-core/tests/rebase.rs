@@ -92,7 +92,7 @@ fn clone_and_merge_into() {
     commit_file(&src, "b.txt", "dev 的提交");
     ops::checkout(&src, "main").unwrap();
     // 在 dev 上把 main 合并进去（已经包含，快进也没有），再在 main 上合并 dev
-    ops::merge_into(&src, "main", "dev").unwrap();
+    ops::merge_into(&src, "main", "dev", ops::MergeMode::Auto, None).unwrap();
     assert!(src.join("b.txt").exists());
 
     let parent = std::env::temp_dir().join(format!("gittree-clone-parent-{}", std::process::id()));

@@ -27,6 +27,12 @@ fn profiles_switch_identity_by_directory() {
     assert_eq!(id.email.as_deref(), Some("me@home.com"));
     assert_eq!(id.scope.as_deref(), Some("global"));
 
+    // 全局身份可以单独读写
+    identity::set_global(&other, "个人2", "me2@home.com").unwrap();
+    let g = identity::global(&repo);
+    assert_eq!((g.name.as_deref(), g.email.as_deref()), (Some("个人2"), Some("me2@home.com")));
+    identity::set_global(&other, "个人", "me@home.com").unwrap();
+
     // 新建一套公司身份，并让 company work 目录下的仓库自动使用
     let pid = identity::save_profile(&store, None, "公司", "张三", "zhangsan@corp.com", None).unwrap();
     identity::set_dirs(&store, &pid, &[work.to_string_lossy().into_owned()]).unwrap();

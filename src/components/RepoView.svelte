@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from "../lib/i18n";
   import type { RefInfo, Remote, Row, Stash } from "../lib/api";
-  import { addRemote, addSubmodule, addWorktree, app, confirm, copyRemoteUrl, createPull, dialog, errorText, openFlow, openRemoteWeb, openRepo, toast, type RepoTab } from "../lib/store.svelte";
+  import { addRemote, addSubmodule, addWorktree, app, confirm, copyRemoteUrl, createPull, dialog, errorText, mergeBranch, openFlow, openRemoteWeb, openRepo, toast, type RepoTab } from "../lib/store.svelte";
   import { api, type Submodule, type Worktree } from "../lib/api";
   import { shareUrl } from "../lib/util";
   import Sidebar from "./Sidebar.svelte";
@@ -17,6 +17,7 @@
   import ReflogView from "./ReflogView.svelte";
   import PullsView from "./PullsView.svelte";
   import BisectBar from "./BisectBar.svelte";
+  import PickedPanel from "./PickedPanel.svelte";
 
   let { tab, active }: { tab: RepoTab; active: boolean } = $props();
 
@@ -136,9 +137,8 @@
     else if (r.kind === "remote") checkoutRemote(r);
   }
 
-  async function mergeInto(target: string) {
-    if (await confirm(t("合并"), t("将 {0} 合并到当前分支 {1}？", target, current), t("合并")))
-      await tab.run({ op: "merge", target }, t("正在合并…"));
+  function mergeInto(target: string) {
+    return mergeBranch(tab, target);
   }
 
   async function rebaseOnto(onto: string) {
@@ -325,14 +325,14 @@
     };
     if (dst.is_head) {
       items.push(
-        { label: t("把 {0} 合并到 {1}", src.name, dst.name), action: ask(t("合并"), t("将 {0} 合并到当前分支 {1}？", src.name, dst.name), () => tab.run({ op: "merge", target: src.name }, t("正在合并…"))) },
+        { label: t("把 {0} 合并到 {1}…", src.name, dst.name), action: () => mergeBranch(tab, src.name) },
         { label: t("把 {0} 变基到 {1}", dst.name, src.name), action: ask(t("变基"), t("将当前分支 {0} 变基到 {1}？\n变基会改写 {2} 的提交历史。", dst.name, src.name, dst.name), () => tab.run({ op: "rebase", onto: src.name }, t("正在变基…"))) },
       );
     } else {
       if (src.is_head)
         items.push({ label: t("把 {0} 变基到 {1}", src.name, dst.name), action: ask(t("变基"), t("将当前分支 {0} 变基到 {1}？\n变基会改写 {2} 的提交历史。", src.name, dst.name, src.name), () => tab.run({ op: "rebase", onto: dst.name }, t("正在变基…"))) });
       if (dst.kind === "local")
-        items.push({ label: t("切换到 {0}，并把 {1} 合并进去", dst.name, src.name), action: ask(t("合并"), t("先切换到 {0}，再把 {1} 合并进去？", dst.name, src.name), () => tab.run({ op: "merge_into", branch: dst.name, source: src.name }, t("正在合并…"))) });
+        items.push({ label: t("切换到 {0}，并把 {1} 合并进去…", dst.name, src.name), action: () => mergeBranch(tab, src.name, dst.name) });
       if (!src.is_head && src.kind === "local")
         items.push({ label: t("把 {0} 变基到 {1}（会切换到 {2}）", src.name, dst.name, src.name), action: ask(t("变基"), t("先切换到 {0}，再把它变基到 {1}？\n变基会改写 {2} 的提交历史。", src.name, dst.name, src.name), () => tab.run({ op: "rebase_branch", branch: src.name, onto: dst.name }, t("正在变基…"))) });
     }
@@ -366,14 +366,14 @@
           label: t("Cherry-pick 到 {0}", current),
           action: async () => {
             if (await confirm("Cherry-pick", t("把提交 {0} 应用到 {1}？", short, current), t("确定")))
-              await tab.run({ op: "cherry_pick", oid: row.oid }, t("正在 cherry-pick…"));
+              await tab.run({ op: "cherry_pick", oids: [row.oid] }, t("正在 cherry-pick…"));
           },
         },
         {
           label: t("撤销此提交 (revert)"),
           action: async () => {
             if (await confirm("Revert", t("创建一个新提交来撤销 {0} 的改动？", short), t("确定")))
-              await tab.run({ op: "revert", oid: row.oid }, t("正在 revert…"));
+              await tab.run({ op: "revert", oids: [row.oid] }, t("正在 revert…"));
           },
         },
         "sep",
@@ -394,6 +394,52 @@
         { label: t("复制提交说明"), action: () => copy(row.summary) },
       ],
     };
+  }
+
+  /** 多选提交的操作：右键菜单和右侧面板共用 */
+  const pickedItems = $derived.by((): MenuItem[] => {
+    const list = tab.picked;
+    const n = list.length;
+    // 列表按行号排，新的在前；拣选要从旧到新依次应用，还原从新到旧
+    const newest = list.map((p) => p.oid);
+    const oldest = [...newest].reverse();
+    const done = () => {
+      const r = tab.selectedRow;
+      if (r !== null && tab.selectedOid) tab.select(r, tab.selectedOid);
+      else tab.picked = [];
+    };
+    return [
+      {
+        label: t("Cherry-pick 到 {0}", current),
+        action: async () => {
+          if (await confirm("Cherry-pick", t("把这 {0} 个提交按从旧到新的顺序应用到 {1}？", n, current), t("确定")))
+            if (await tab.run({ op: "cherry_pick", oids: oldest }, t("正在 cherry-pick…"))) done();
+        },
+      },
+      {
+        label: t("撤销这些提交 (revert)"),
+        action: async () => {
+          if (await confirm("Revert", t("从新到旧依次创建 {0} 个新提交来撤销它们的改动？", n), t("确定")))
+            if (await tab.run({ op: "revert", oids: newest }, t("正在 revert…"))) done();
+        },
+      },
+      "sep",
+      {
+        label: t("对比这两个提交"),
+        disabled: n !== 2,
+        hint: n !== 2 ? t("只能对比两个提交") : undefined,
+        action: () => tab.openCompare(oldest[0], newest[0]),
+      },
+      "sep",
+      { label: t("复制提交哈希"), action: () => copy(newest.join("\n")) },
+      { label: t("复制提交说明"), action: () => copy(list.map((p) => p.summary).join("\n")) },
+      "sep",
+      { label: t("取消选择"), action: done },
+    ];
+  });
+
+  function onPickedMenu(e: MouseEvent) {
+    menu = { x: e.clientX, y: e.clientY, items: pickedItems };
   }
 
   /** 提交右键菜单里二分查错的选项 */
@@ -486,7 +532,7 @@
     <div class="center">
       {#if tab.bisect?.active}<BisectBar {tab} state={tab.bisect} />{/if}
       <div class="graph-wrap" class:hidden={!!tab.diff || !!tab.fileView || !!tab.compareView || !!tab.toolView}>
-        <CommitGraph {tab} {active} {onRowMenu} {onRefMenu} {onRefDblClick} {onRefDrop} />
+        <CommitGraph {tab} {active} {onRowMenu} {onPickedMenu} {onRefMenu} {onRefDblClick} {onRefDrop} />
       </div>
       {#if tab.toolView === "reflog" && active}
         <div class="diff-wrap"><ReflogView {tab} onClose={() => (tab.toolView = null)} /></div>
@@ -517,6 +563,8 @@
         <WorkingTree {tab} />
       {:else if tab.panel === "stash" && tab.selectedStash}
         <StashPanel {tab} stash={tab.selectedStash} />
+      {:else if tab.picked.length > 1}
+        <PickedPanel {tab} items={pickedItems} />
       {:else if tab.selectedOid}
         <CommitPanel {tab} oid={tab.selectedOid} />
       {:else}

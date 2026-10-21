@@ -188,6 +188,3 @@ export function startNotifier() {
   tick();
   setInterval(tick, 20_000);
 }
-
-/** 设置窗口是否打开 */
-export const notifyDialog = $state({ open: false });

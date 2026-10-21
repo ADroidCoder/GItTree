@@ -2,8 +2,7 @@
   import type { FlowKind } from "../lib/api";
   import { bestScore } from "../lib/fuzzy";
   import { lang, setLang, t } from "../lib/i18n";
-  import { notifyDialog } from "../lib/notify.svelte";
-  import { activate, activeTab, addRemote, addSubmodule, addWorktree, app, closeTab, copyRemoteUrl, createPull, forcePush, openRemoteWeb, openFlow, openIn, openRepo, recentRepos, setTheme, showTasks, startBisect, trackWithLfs } from "../lib/store.svelte";
+  import { activate, activeTab, addRemote, addSubmodule, addWorktree, app, closeTab, copyRemoteUrl, createPull, forcePush, openRemoteWeb, openFlow, openIn, openRepo, openSettings, recentRepos, setTheme, showTasks, startBisect, trackWithLfs } from "../lib/store.svelte";
   import { checkUpdate } from "../lib/updater.svelte";
   import { shareUrl } from "../lib/util";
 
@@ -129,7 +128,8 @@
       { group: g, label: t("克隆远程仓库…"), keys: "kelong kl clone", run: () => (app.cloneDialog = { mode: "clone" }) },
       { group: g, label: t("新建仓库…"), keys: "xinjian cangku xjck new init repository", run: () => (app.cloneDialog = { mode: "init" }) },
       { group: g, label: t("任务面板"), keys: "renwu rw tasks board kanban", run: () => showTasks() },
-      { group: g, label: t("提醒与通知…"), keys: "tixing tx tongzhi tz reminders notifications heshui", run: () => (notifyDialog.open = true) },
+      { group: g, label: t("提醒与通知…"), keys: "tixing tx tongzhi tz reminders notifications heshui", run: () => openSettings("notify") },
+      { group: g, label: t("设置…"), hint: `${mod},`, keys: "shezhi sz settings preferences", run: () => openSettings() },
       { group: g, label: t("检查更新…"), keys: "jiancha gengxin jcgx check update", run: () => checkUpdate(true) },
       { group: g, label: t("主题：深色"), keys: "zhuti zt shense dark theme", run: () => setTheme("dark") },
       { group: g, label: t("主题：浅色"), keys: "zhuti zt qianse light theme", run: () => setTheme("light") },

@@ -1,8 +1,9 @@
 import { t } from "./i18n";
 import { isMac, shareUrl, webUrl } from "./util";
+import { prefs } from "./prefs";
 import { autoArchive, loadTasks, saveTasks, type Board } from "./board";
 import { notifyInBackground, notifySettings } from "./notify.svelte";
-import { api, type AskPassRequest, type BisectState, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type Remote, type RepoExtras, type RepoInfo, type Stash, type Status } from "./api";
+import { api, type AskPassRequest, type BisectState, type MergeMode, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type Remote, type RepoExtras, type RepoInfo, type Row, type Stash, type Status } from "./api";
 
 export interface DiffTarget {
   /** commit：某个提交里的文件；workdir：工作区文件；conflict：解决冲突；compare：两个提交之间 */
@@ -17,6 +18,18 @@ export interface DiffTarget {
 }
 
 /** 对比两个版本：分支名、标签名或提交号 */
+/** 提交图里多选的一个提交 */
+export interface Picked {
+  oid: string;
+  row: number;
+  summary: string;
+  author: string;
+  time: number;
+}
+
+/** 多选里最多放这么多个提交 */
+const PICK_LIMIT = 500;
+
 export interface CompareView {
   from: string;
   to: string;
@@ -52,9 +65,18 @@ export interface DialogSpec {
   message?: string;
   input?: { placeholder?: string; value: string; multiline?: boolean };
   checkbox?: { label: string; value: boolean };
+  /** 单选项；input.when 设置时，只在选中这些值时显示输入框 */
+  choices?: { value: string; options: { value: string; label: string; hint?: string }[] };
+  inputWhen?: string[];
   confirmText?: string;
   danger?: boolean;
-  resolve: (r: { input: string; checkbox: boolean } | null) => void;
+  resolve: (r: DialogResult | null) => void;
+}
+
+export interface DialogResult {
+  input: string;
+  checkbox: boolean;
+  choice: string;
 }
 
 export function errorText(e: unknown): string {
@@ -114,6 +136,8 @@ export class RepoTab {
   remotes = $state<Remote[]>([]);
   selectedOid = $state<string | null>(null);
   selectedRow = $state<number | null>(null);
+  /** 提交图里多选的提交（⌘/Ctrl 或 Shift 点击），按行号排（新的在前）；不到两个时为空 */
+  picked = $state<Picked[]>([]);
   /** 右侧面板显示提交详情、工作区还是 stash */
   panel = $state<"commit" | "wip" | "stash">("commit");
   #diff = $state<DiffTarget | null>(null);
@@ -264,6 +288,7 @@ export class RepoTab {
             this.selectedRow = await api.rowOf(this.id, this.selectedOid);
             if (this.selectedRow === null) this.selectedOid = null;
           }
+          await this.repick();
           await Promise.all([this.refreshStatus(), this.refreshStashes(), this.refreshFlow(), this.refreshBisect()]);
         } while (this.refreshAgain);
       } catch (e) {
@@ -335,6 +360,7 @@ export class RepoTab {
   }
 
   showStash(st: Stash) {
+    this.picked = [];
     this.selectedStash = st;
     this.panel = "stash";
     this.selectedRow = null;
@@ -353,6 +379,7 @@ export class RepoTab {
         this.selectedRow = await api.rowOf(this.id, this.selectedOid);
         if (this.selectedRow === null) this.selectedOid = null;
       }
+      await this.repick();
       this.search.hits = [];
       const row = this.selectedRow ?? this.repo.head.row;
       if (row !== null) this.scrollTo(row);
@@ -520,9 +547,55 @@ export class RepoTab {
   }
 
   select(row: number, oid: string) {
+    this.picked = [];
     this.selectedRow = row;
     this.selectedOid = oid;
     this.panel = "commit";
+  }
+
+  /** ⌘/Ctrl 点击：把提交加入多选，已经选了就移出 */
+  async togglePick(r: number, row: Row) {
+    let list = this.picked;
+    if (!list.length && this.selectedOid && this.selectedRow !== null && this.selectedRow !== r) {
+      const cur = (await api.getRows(this.id, this.selectedRow, this.selectedRow + 1)).rows[0];
+      list = cur ? [toPicked(this.selectedRow, cur)] : [];
+    }
+    const i = list.findIndex((p) => p.oid === row.oid);
+    if (i >= 0) {
+      list = list.filter((_, j) => j !== i);
+      if (list.length === 1) return this.select(list[0].row, list[0].oid);
+      if (!list.length) return;
+      this.picked = list;
+      if (this.selectedOid === row.oid) {
+        this.selectedRow = list[list.length - 1].row;
+        this.selectedOid = list[list.length - 1].oid;
+      }
+      return;
+    }
+    if (list.length >= PICK_LIMIT) return toast(t("最多选 {0} 个提交", PICK_LIMIT), "error");
+    list = [...list, toPicked(r, row)].sort((a, b) => a.row - b.row);
+    this.select(r, row.oid);
+    if (list.length > 1) this.picked = list;
+  }
+
+  /** Shift 点击：选中从当前选中的提交到这一行之间的所有提交 */
+  async pickRange(r: number, row: Row) {
+    const anchor = this.selectedRow;
+    if (anchor === null || anchor === r) return this.select(r, row.oid);
+    const lo = Math.min(anchor, r);
+    const hi = Math.min(Math.max(anchor, r), lo + PICK_LIMIT - 1);
+    const rows = (await api.getRows(this.id, lo, hi + 1)).rows;
+    this.picked = rows.map((x, i) => toPicked(lo + i, x));
+    this.panel = "commit";
+    if (Math.max(anchor, r) > hi) toast(t("最多选 {0} 个提交", PICK_LIMIT), "error");
+  }
+
+  /** 历史重新加载后按哈希找回多选的提交，找不到的去掉 */
+  private async repick() {
+    if (!this.picked.length) return;
+    const rows = await Promise.all(this.picked.map((p) => api.rowOf(this.id, p.oid)));
+    const list = this.picked.flatMap((p, i) => (rows[i] === null ? [] : [{ ...p, row: rows[i]! }])).sort((a, b) => a.row - b.row);
+    this.picked = list.length > 1 ? list : [];
   }
 
   /** 查看一个提交；不在提交图里（row 为空）时也能在右侧看详情 */
@@ -531,6 +604,7 @@ export class RepoTab {
       this.select(row, oid);
       this.scrollTo(row);
     } else {
+      this.picked = [];
       this.selectedRow = null;
       this.selectedOid = oid;
       this.panel = "commit";
@@ -538,6 +612,7 @@ export class RepoTab {
   }
 
   showWip() {
+    this.picked = [];
     this.panel = "wip";
     this.selectedRow = null;
     this.selectedOid = null;
@@ -570,6 +645,12 @@ export interface FlowDialogSpec {
 
 export type Theme = "dark" | "light" | "system";
 
+export type SettingsSection = "appearance" | "git" | "identity" | "tools" | "notify" | "about";
+
+export function openSettings(section: SettingsSection = "appearance") {
+  app.settings = section;
+}
+
 function initialTheme(): Theme {
   const t = document.documentElement.dataset.theme;
   return t === "light" || t === "system" ? t : "dark";
@@ -597,6 +678,8 @@ export const app = $state({
   dialog: null as DialogSpec | null,
   /** 提交身份设置对话框 */
   identityDialog: null as RepoTab | null,
+  /** 设置窗口打开时显示的分类 */
+  settings: null as SettingsSection | null,
   flowDialog: null as FlowDialogSpec | null,
 });
 
@@ -634,15 +717,9 @@ function initialEditor(): string {
   }
 }
 
-export async function chooseEditor() {
-  const r = await dialog({
-    title: t("编辑器命令"),
-    message: t("用来打开仓库和文件的命令，例如 code（VS Code）、cursor、idea、subl、webstorm"),
-    input: { value: app.editor, placeholder: "code" },
-    confirmText: t("保存"),
-  });
-  if (!r?.input.trim()) return;
-  app.editor = r.input.trim();
+export function setEditor(cmd: string) {
+  if (!cmd.trim()) return;
+  app.editor = cmd.trim();
   try {
     localStorage.setItem("gittree.editor", app.editor);
   } catch {
@@ -715,7 +792,7 @@ export function toast(text: string, kind: Toast["kind"] = "info") {
   setTimeout(() => (app.toasts = app.toasts.filter((t) => t.id !== id)), kind === "error" ? 9000 : 3500);
 }
 
-export function dialog(spec: Omit<DialogSpec, "resolve">): Promise<{ input: string; checkbox: boolean } | null> {
+export function dialog(spec: Omit<DialogSpec, "resolve">): Promise<DialogResult | null> {
   return new Promise((resolve) => {
     app.dialog = { ...spec, resolve };
   });
@@ -960,6 +1037,36 @@ export async function confirm(title: string, message: string, confirmText = t("�
   return (await dialog({ title, message, confirmText, danger })) !== null;
 }
 
+/** 合并 source：选择合并方式后执行；into 指定时先切换到 into 再合并 */
+export async function mergeBranch(tab: RepoTab, source: string, into?: string) {
+  const current = tab.repo?.head.branch ?? "HEAD";
+  const last = prefs.mergeMode();
+  const d = await dialog({
+    title: t("合并"),
+    message: into ? t("先切换到 {0}，再把 {1} 合并进去", into, source) : t("将 {0} 合并到当前分支 {1}", source, current),
+    choices: {
+      value: last,
+      options: [
+        { value: "auto", label: t("自动"), hint: t("能快进就直接快进，否则创建合并提交（git 默认）") },
+        { value: "no_ff", label: t("总是创建合并提交"), hint: t("即使能快进也保留一个合并提交，历史里看得出分支（--no-ff）") },
+        { value: "ff_only", label: t("只允许快进"), hint: t("两边已经分叉时不合并（--ff-only）") },
+        { value: "squash", label: t("压缩成一个提交"), hint: t("把 {0} 的所有改动合成一个新提交，不保留它的提交历史（--squash）", source) },
+      ],
+    },
+    input: { placeholder: t("提交说明"), value: `Merge branch '${source}' (squashed)`, multiline: true },
+    inputWhen: ["squash"],
+    confirmText: t("合并"),
+  });
+  if (!d) return;
+  const mode = d.choice as MergeMode;
+  prefs.setMergeMode(mode);
+  const message = mode === "squash" ? d.input.trim() || null : null;
+  await tab.run(
+    into ? { op: "merge_into", branch: into, source, mode, message } : { op: "merge", target: source, mode, message },
+    t("正在合并…"),
+  );
+}
+
 // ---------- 最近打开的仓库和标签页记忆（只存在本机） ----------
 
 function readJson<T>(key: string, fallback: T): T {
@@ -1077,4 +1184,8 @@ export function closeTab(tab: RepoTab) {
 
 export function tabById(id: string) {
   return app.tabs.find((t) => t.id === id);
+}
+
+function toPicked(row: number, r: Row): Picked {
+  return { oid: r.oid, row, summary: r.summary, author: r.author, time: r.time };
 }

@@ -9,6 +9,7 @@
     tab,
     active,
     onRowMenu,
+    onPickedMenu,
     onRefMenu,
     onRefDrop,
     onRefDblClick,
@@ -17,6 +18,8 @@
     /** 是否是当前显示的标签页（隐藏的标签页不画图） */
     active: boolean;
     onRowMenu: (e: MouseEvent, row: Row, index: number) => void;
+    /** 在多选的提交上点右键 */
+    onPickedMenu: (e: MouseEvent) => void;
     onRefMenu: (e: MouseEvent, ref: RefInfo) => void;
     /** 把一个分支拖到另一个分支上 */
     onRefDrop: (e: MouseEvent, src: RefInfo, dst: RefInfo) => void;
@@ -129,11 +132,20 @@
     return out;
   });
 
+  /** 多选的行号 */
+  const pickedRows = $derived(new Set(tab.picked.map((p) => p.row)));
+
+  function clickRow(e: MouseEvent, r: number, row: Row) {
+    if (e.metaKey || e.ctrlKey) tab.togglePick(r, row);
+    else if (e.shiftKey) tab.pickRange(r, row);
+    else tab.select(r, row.oid);
+  }
+
   // ---------- 画图 ----------
   let frame = 0;
   $effect(() => {
     // 这些值变化时重绘
-    void [tick, scrollTop, vh, graphWidth, tab.selectedRow, headRow, off, active, app.theme, systemDark];
+    void [tick, scrollTop, vh, graphWidth, tab.selectedRow, pickedRows, headRow, off, active, app.theme, systemDark];
     if (active && !frame) frame = requestAnimationFrame(draw);
   });
 
@@ -258,7 +270,7 @@
       ctx.fillStyle = color;
       ctx.fill();
       ctx.lineWidth = 2;
-      ctx.strokeStyle = r === tab.selectedRow ? "#fff" : bg;
+      ctx.strokeStyle = r === tab.selectedRow || pickedRows.has(r) ? "#fff" : bg;
       ctx.stroke();
       ctx.fillStyle = "#fff";
       ctx.fillText(initials(row.author), cx, cy + 0.5);
@@ -348,6 +360,13 @@
       j: cur + 1,
       k: cur - 1,
     };
+    if (e.key === "Escape" && tab.picked.length) {
+      e.preventDefault();
+      const r = tab.selectedRow;
+      if (r !== null && tab.selectedOid) tab.select(r, tab.selectedOid);
+      else tab.picked = [];
+      return;
+    }
     if (e.key in map && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       selectDisplay(map[e.key]);
@@ -480,20 +499,21 @@
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <div
             class="row"
-            class:selected={v.r === tab.selectedRow}
+            class:selected={v.r === tab.selectedRow || pickedRows.has(v.r)}
             class:hit={searchHits.has(v.r)}
             class:current-hit={v.r === currentHit}
             class:head={v.r === headRow}
             style="height:{ROW_H}px"
             role="row"
             tabindex="-1"
-            onclick={() => row && tab.select(v.r, row.oid)}
+            onclick={(e) => row && clickRow(e, v.r, row)}
+            onmousedown={(e) => e.shiftKey && e.preventDefault()}
             oncontextmenu={(e) => {
               e.preventDefault();
-              if (row) {
-                tab.select(v.r, row.oid);
-                onRowMenu(e, row, v.r);
-              }
+              if (!row) return;
+              if (pickedRows.has(v.r)) return onPickedMenu(e);
+              tab.select(v.r, row.oid);
+              onRowMenu(e, row, v.r);
             }}
           >
             <!-- svelte-ignore a11y_no_static_element_interactions -->

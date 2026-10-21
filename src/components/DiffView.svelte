@@ -4,6 +4,7 @@
   import { confirm, errorText, type DiffTarget, type RepoTab } from "../lib/store.svelte";
   import { intraline, languageOf, renderLine } from "../lib/highlight";
   import ImageDiff, { isImage } from "./ImageDiff.svelte";
+  import { prefs } from "../lib/prefs";
 
   let {
     tab,
@@ -22,25 +23,14 @@
   let diff = $state<FileDiff | null>(null);
   let error = $state<string | null>(null);
   let loading = $state(true);
-  let split = $state(loadSplitPref());
+  let split = $state(prefs.diffSplit());
   let scroller = $state<HTMLDivElement>();
   let scrollTop = $state(0);
   let viewH = $state(600);
 
-  function loadSplitPref() {
-    try {
-      return localStorage.getItem("gittree.diffSplit") === "1";
-    } catch {
-      return false;
-    }
-  }
   function toggleSplit() {
     split = !split;
-    try {
-      localStorage.setItem("gittree.diffSplit", split ? "1" : "0");
-    } catch {
-      // 忽略
-    }
+    prefs.setDiffSplit(split);
   }
 
   // 目标文件变化或仓库刷新后重新加载

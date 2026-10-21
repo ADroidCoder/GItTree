@@ -3,7 +3,7 @@
 
 use crate::tr;
 use crate::log::Error;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -606,8 +606,58 @@ pub fn delete_remote_branch(dir: &Path, remote_branch: &str) -> Result<(), Error
     Ok(())
 }
 
+/// 合并方式
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeMode {
+    /// git 默认：能快进就快进，否则创建合并提交（遵守 merge.ff 配置）
+    #[default]
+    Auto,
+    /// 总是创建合并提交
+    NoFf,
+    /// 只允许快进，分叉了就不合并
+    FfOnly,
+    /// 把对方的改动压缩成一个新提交
+    Squash,
+}
+
 pub fn merge(dir: &Path, target: &str) -> Result<String, Error> {
-    git(dir, &["merge", "--no-edit", target])
+    merge_with(dir, target, MergeMode::Auto, None)
+}
+
+/// 按指定方式合并；Squash 时用 message 作为新提交的说明（为空时用默认说明）
+pub fn merge_with(dir: &Path, target: &str, mode: MergeMode, message: Option<&str>) -> Result<String, Error> {
+    match mode {
+        MergeMode::Auto => git(dir, &["merge", "--no-edit", target]),
+        MergeMode::NoFf => git(dir, &["merge", "--no-edit", "--no-ff", target]),
+        MergeMode::FfOnly => git(dir, &["merge", "--ff-only", target]).map_err(|e| {
+            if e.to_string().contains("fast-forward") {
+                tr!(
+                    "无法快进：当前分支和 {target} 已经分叉，各自有对方没有的提交。\n可以改用“创建合并提交”或者变基。",
+                    "Can't fast-forward: the current branch and {target} have diverged.\nUse a merge commit or rebase instead."
+                )
+                .into()
+            } else {
+                e
+            }
+        }),
+        MergeMode::Squash => {
+            let out = git(dir, &["merge", "--squash", target]).map_err(|e| -> Error {
+                tr!(
+                    "压缩合并时出现冲突。解决冲突后，在提交框里提交即可。\n\n{e}",
+                    "The squash merge has conflicts. Resolve them, then commit from the commit box.\n\n{e}"
+                )
+                .into()
+            })?;
+            // 没有暂存任何改动：已经是最新的，不用提交
+            if git(dir, &["diff", "--cached", "--quiet"]).is_ok() {
+                return Ok(out);
+            }
+            let default = format!("Merge branch '{target}' (squashed)");
+            let msg = message.map(str::trim).filter(|m| !m.is_empty()).unwrap_or(&default);
+            git(dir, &["commit", "-m", msg])
+        }
+    }
 }
 
 pub fn rebase(dir: &Path, onto: &str) -> Result<String, Error> {
@@ -623,12 +673,18 @@ pub fn sequencer(dir: &Path, op: &str, action: &str) -> Result<String, Error> {
     git(dir, &[op, &flag])
 }
 
-pub fn cherry_pick(dir: &Path, oid: &str) -> Result<String, Error> {
-    git(dir, &["cherry-pick", oid])
+/// 按给出的顺序依次拣选，冲突时停下，之后用 sequencer 继续或中止
+pub fn cherry_pick(dir: &Path, oids: &[String]) -> Result<String, Error> {
+    let mut args = vec!["cherry-pick"];
+    args.extend(oids.iter().map(String::as_str));
+    git(dir, &args)
 }
 
-pub fn revert(dir: &Path, oid: &str) -> Result<String, Error> {
-    git(dir, &["revert", "--no-edit", oid])
+/// 按给出的顺序依次还原，每个提交生成一个还原提交
+pub fn revert(dir: &Path, oids: &[String]) -> Result<String, Error> {
+    let mut args = vec!["revert", "--no-edit"];
+    args.extend(oids.iter().map(String::as_str));
+    git(dir, &args)
 }
 
 pub fn reset(dir: &Path, oid: &str, mode: &str) -> Result<(), Error> {
@@ -675,9 +731,9 @@ pub fn init(path: &Path) -> Result<(), Error> {
 }
 
 /// 先切换到 branch，再把 source 合并进来
-pub fn merge_into(dir: &Path, branch: &str, source: &str) -> Result<String, Error> {
+pub fn merge_into(dir: &Path, branch: &str, source: &str, mode: MergeMode, message: Option<&str>) -> Result<String, Error> {
     checkout(dir, branch)?;
-    merge(dir, source)
+    merge_with(dir, source, mode, message)
 }
 
 /// 先切换到 branch，再把它变基到 onto

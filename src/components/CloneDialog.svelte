@@ -6,11 +6,12 @@
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { api, type ProgressEvent } from "../lib/api";
   import { app, elapsed, errorText, openRepo } from "../lib/store.svelte";
+  import { prefs } from "../lib/prefs";
 
   // svelte-ignore state_referenced_locally
   let mode = $state(app.cloneDialog!.mode);
   let url = $state("");
-  let parent = $state(loadParent());
+  let parent = $state(prefs.cloneDir());
   let name = $state("");
   /** 用户改过文件夹名后就不再跟着地址自动变化 */
   let nameEdited = $state(false);
@@ -22,13 +23,6 @@
   let urlInput = $state<HTMLInputElement>();
 
 
-  function loadParent() {
-    try {
-      return localStorage.getItem("gittree.cloneDir") ?? "";
-    } catch {
-      return "";
-    }
-  }
 
   /** 从地址里取仓库名：https://gitee.com/a/b.git、git@github.com:a/b.git → b */
   function nameFromUrl(u: string) {
@@ -81,11 +75,7 @@
 
   async function start() {
     if (!canStart) return;
-    try {
-      localStorage.setItem("gittree.cloneDir", parent);
-    } catch {
-      // 忽略
-    }
+    prefs.setCloneDir(parent);
     running = true;
     since = Date.now();
     error = null;

@@ -315,11 +315,11 @@ export type Op =
   | { op: "set_remote_url"; name: string; url: string }
   | { op: "push_tag"; remote: string; tag: string | null }
   | { op: "delete_remote_tag"; remote: string; tag: string }
-  | { op: "merge"; target: string }
+  | { op: "merge"; target: string; mode?: MergeMode; message?: string | null }
   | { op: "rebase"; onto: string }
   | { op: "sequencer"; kind: string; action: "abort" | "continue" }
-  | { op: "cherry_pick"; oid: string }
-  | { op: "revert"; oid: string }
+  | { op: "cherry_pick"; oids: string[] }
+  | { op: "revert"; oids: string[] }
   | { op: "reset"; oid: string; mode: "soft" | "mixed" | "hard" }
   | { op: "create_tag"; name: string; oid: string; message: string | null }
   | { op: "delete_tag"; name: string }
@@ -334,7 +334,7 @@ export type Op =
   | { op: "flow_publish"; kind: FlowKind; name: string }
   | { op: "resolve_conflict"; path: string; choices: Choice[] }
   | { op: "resolve_side"; path: string; theirs: boolean }
-  | { op: "merge_into"; branch: string; source: string }
+  | { op: "merge_into"; branch: string; source: string; mode?: MergeMode; message?: string | null }
   | { op: "rebase_branch"; branch: string; onto: string }
   | { op: "rebase_interactive"; from: string; steps: RebaseStep[] }
   | { op: "ignore"; patterns: string[] }
@@ -473,6 +473,8 @@ export const api = {
     invoke<string>("identity_save_profile", { id, label, name, email, signingKey }),
   identityDeleteProfile: (id: string) => invoke<void>("identity_delete_profile", { id }),
   identitySetDirs: (id: string, dirs: string[]) => invoke<void>("identity_set_dirs", { id, dirs }),
+  globalIdentity: () => invoke<Identity>("global_identity"),
+  setGlobalIdentity: (name: string, email: string) => invoke<void>("set_global_identity", { name, email }),
   forgeInfo: (url: string) => invoke<ForgeInfo>("forge_info", { url }),
   forgeNewPullUrl: (url: string, source: string, target: string) => invoke<string>("forge_new_pull_url", { url, source, target }),
   forgeConfigure: (host: string, kind: ForgeKind | null, token: string | null) => invoke<void>("forge_configure", { host, kind, token }),
@@ -501,3 +503,6 @@ export interface AskPassRequest {
   id: number;
   prompt: string;
 }
+
+/** 合并方式 */
+export type MergeMode = "auto" | "no_ff" | "ff_only" | "squash";
