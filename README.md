@@ -17,6 +17,8 @@ English · [简体中文](README.zh-CN.md)
 
 </div>
 
+<p align="center"><img src="docs/screenshot.png" alt="GitTree screenshot" width="100%"></p>
+
 ---
 
 ## Why GitTree

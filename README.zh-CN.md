@@ -17,6 +17,8 @@
 
 </div>
 
+<p align="center"><img src="docs/screenshot.png" alt="GitTree 截图" width="100%"></p>
+
 ---
 
 ## 为什么选择 GitTree
