@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 /** 分支线的颜色：GitKraken 经典的 10 色（青、蓝、紫、品红、粉、红、橙、黄、绿、青绿） */
 export const PALETTE = [
   "#15a0bf",
@@ -25,13 +26,13 @@ export function formatDate(sec: number) {
 
 export function relativeTime(sec: number) {
   const diff = Date.now() / 1000 - sec;
-  if (diff < 60) return "刚刚";
-  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
-  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} 天前`;
+  if (diff < 60) return t("刚刚");
+  if (diff < 3600) return t("{0} 分钟前", Math.floor(diff / 60));
+  if (diff < 86400) return t("{0} 小时前", Math.floor(diff / 3600));
+  if (diff < 86400 * 7) return t("{0} 天前", Math.floor(diff / 86400));
   const d = new Date(sec * 1000);
   const now = new Date();
-  if (d.getFullYear() === now.getFullYear()) return `${d.getMonth() + 1}月${d.getDate()}日`;
+  if (d.getFullYear() === now.getFullYear()) return t("{0}月{1}日", d.getMonth() + 1, d.getDate());
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 

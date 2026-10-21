@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { api, type CommitDetails, type Stash } from "../lib/api";
   import { confirm, errorText, type RepoTab } from "../lib/store.svelte";
   import { formatDate } from "../lib/util";
@@ -44,13 +45,13 @@
   });
 
   async function drop() {
-    if (await confirm("删除 stash", `确定删除 “${stash.message}” 吗？此操作无法撤销。`, "删除", true)) {
+    if (await confirm(t("删除 stash"), t("确定删除 “{0}” 吗？此操作无法撤销。", stash.message), t("删除"), true)) {
       if (await tab.run({ op: "stash", action: "drop", index: stash.index })) tab.selectedStash = null;
     }
   }
 
   async function pop() {
-    if (await tab.run({ op: "stash", action: "pop", index: stash.index }, "正在恢复 stash…")) tab.showWip();
+    if (await tab.run({ op: "stash", action: "pop", index: stash.index }, t("正在恢复 stash…"))) tab.showWip();
   }
 </script>
 
@@ -60,19 +61,19 @@
     <div class="subject">{stash.message}</div>
     {#if details}<div class="when">{formatDate(details.author.time)}</div>{/if}
     <div class="actions">
-      <button class="primary" onclick={() => tab.run({ op: "stash", action: "apply", index: stash.index }, "正在应用 stash…")}>
-        应用
+      <button class="primary" onclick={() => tab.run({ op: "stash", action: "apply", index: stash.index }, t("正在应用 stash…"))}>
+        {t("应用")}
       </button>
-      <button onclick={pop} title="应用到工作区并删除这条 stash">恢复并删除</button>
-      <button class="danger" onclick={drop}>删除</button>
+      <button onclick={pop} title={t("应用到工作区并删除这条 stash")}>{t("恢复并删除")}</button>
+      <button class="danger" onclick={drop}>{t("删除")}</button>
     </div>
   </div>
   {#if error}
     <div class="msg error">{error}</div>
   {:else if !details}
-    <div class="msg">加载中…</div>
+    <div class="msg">{t("加载中…")}</div>
   {:else}
-    <div class="files-head">{files.length} 个文件{untracked ? `（其中 ${untracked.files.length} 个未跟踪的新文件）` : ""}</div>
+    <div class="files-head">{t("{0} 个文件{1}", files.length, untracked ? t("（其中 {0} 个未跟踪的新文件）", untracked.files.length) : "")}</div>
     <div class="files">
       <FileList
         {files}

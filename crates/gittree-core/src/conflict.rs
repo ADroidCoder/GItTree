@@ -3,6 +3,7 @@
 //! 全程按原始字节处理，GBK 等非 UTF-8 文件选择“当前 / 传入”时不会被改坏；
 //! 只有 UTF-8 文件才允许手动编辑结果。
 
+use crate::tr;
 use crate::log::Error;
 use crate::ops::git;
 use serde::{Deserialize, Serialize};
@@ -196,7 +197,7 @@ pub fn resolve(dir: &Path, path: &str, choices: &[Choice]) -> Result<(), Error> 
     let raw = parse(&data);
     let count = raw.iter().filter(|r| matches!(r, Raw::Conflict { .. })).count();
     if count != choices.len() {
-        return Err("文件内容已经变化，请重新打开后再解决".into());
+        return Err(tr!("文件内容已经变化，请重新打开后再解决", "The file has changed. Reopen it and try again").into());
     }
     let utf8 = std::str::from_utf8(&data).is_ok();
     let mut out = Vec::with_capacity(data.len());
@@ -218,7 +219,7 @@ pub fn resolve(dir: &Path, path: &str, choices: &[Choice]) -> Result<(), Error> 
                 }
                 Choice::Text { text } => {
                     if !utf8 {
-                        return Err("这个文件不是 UTF-8 编码，不能手动编辑，请选择当前或传入的内容".into());
+                        return Err(tr!("这个文件不是 UTF-8 编码，不能手动编辑，请选择当前或传入的内容", "This file isn't UTF-8 and can't be edited by hand. Choose the current or incoming content").into());
                     }
                     out.extend_from_slice(text.as_bytes());
                 }

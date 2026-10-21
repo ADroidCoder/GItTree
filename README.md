@@ -71,8 +71,12 @@ Get the latest installer from the [**Releases page**](https://github.com/ADroidC
 - **File history** that follows renames, and **Blame** with per-line author, date and commit.
 - **Git Flow** — start and finish feature / bugfix / release / hotfix branches from one panel. Compatible with the `git flow` CLI and SourceTree configuration.
 
+### App
+- **English and Chinese UI** — follows the system language; switch any time in Settings (⚙).
+- **Automatic updates** — GitTree checks GitHub Releases in the background and installs new versions in one click. Updates are signed and verified before installing.
+
 ### Task board
-A global Kanban board (to do / in progress / review / done, columns customizable) with assignees, priorities and due dates. Tasks can be linked to a repository and branch. Data is stored locally and never written into your repositories.
+A global Kanban board (to do / in progress / review / done, columns customizable) with assignees, priorities, due dates and checklists. Finished tasks are archived automatically after a configurable number of days and stay searchable. Tasks can be linked to a repository and branch. Data is stored locally and never written into your repositories.
 
 ## Keyboard shortcuts
 

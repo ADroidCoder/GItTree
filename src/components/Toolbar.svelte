@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { savedLang, setLang, t, type Lang } from "../lib/i18n";
+  import { checkUpdate, updater } from "../lib/updater.svelte";
   import { api } from "../lib/api";
   import { app, chooseEditor, dialog, errorText, openFlow, openIn, setAutoFetch, setTheme, toast, type RepoTab, type Theme } from "../lib/store.svelte";
   import { isMac } from "../lib/util";
@@ -17,31 +19,31 @@
 
   function showFlowMenu(e: MouseEvent) {
     if (!tab) return;
-    const t = tab;
+    const tb = tab;
     const pos = below(e);
-    if (!t.flow?.initialized) {
-      flowMenu = { ...pos, items: [{ label: "初始化 Git Flow…", action: () => openFlow({ tab: t, mode: "init" }) }] };
+    if (!tb.flow?.initialized) {
+      flowMenu = { ...pos, items: [{ label: t("初始化 Git Flow…"), action: () => openFlow({ tab: tb, mode: "init" }) }] };
       return;
     }
     flowPanel = pos;
   }
 
   const THEMES: { value: Theme; label: string; icon: string }[] = [
-    { value: "dark", label: "深色", icon: "☾" },
-    { value: "light", label: "浅色", icon: "☀" },
-    { value: "system", label: "跟随系统", icon: "◐" },
+    { value: "dark", label: t("深色"), icon: "☾" },
+    { value: "light", label: t("浅色"), icon: "☀" },
+    { value: "system", label: t("跟随系统"), icon: "◐" },
   ];
   function showOpenMenu(e: MouseEvent) {
     if (!tab) return;
-    const t = tab;
+    const tb = tab;
     flowMenu = {
       ...below(e),
       items: [
-        { label: `用编辑器打开`, hint: app.editor, action: () => openIn(t, "editor") },
-        { label: "在终端中打开", action: () => openIn(t, "terminal") },
-        { label: isMac ? "在访达中显示" : "在资源管理器中显示", action: () => openIn(t, "folder") },
+        { label: t("用编辑器打开"), hint: app.editor, action: () => openIn(tb, "editor") },
+        { label: t("在终端中打开"), action: () => openIn(tb, "terminal") },
+        { label: isMac ? t("在访达中显示") : t("在资源管理器中显示"), action: () => openIn(tb, "folder") },
         "sep",
-        { label: "设置编辑器命令…", action: chooseEditor },
+        { label: t("设置编辑器命令…"), action: chooseEditor },
       ],
     };
   }
@@ -57,11 +59,36 @@
         })),
         "sep",
         ...AUTO_FETCH.map((m) => ({
-          label: `${m ? `每 ${m} 分钟自动获取` : "不自动获取"}${app.autoFetch === m ? "  ✓" : ""}`,
+          label: `${m ? t("每 {0} 分钟自动获取", m) : t("不自动获取")}${app.autoFetch === m ? "  ✓" : ""}`,
           action: () => setAutoFetch(m),
         })),
+        "sep",
+        ...LANGS.map((l) => ({
+          label: `${l.label}${savedLang() === l.value ? "  ✓" : ""}`,
+          action: () => changeLang(l.value),
+        })),
+        "sep",
+        {
+          label: updater.update ? t("安装新版本 {0}…", updater.update.version) : t("检查更新…"),
+          hint: updater.version ? `v${updater.version}` : undefined,
+          action: () => (updater.update ? (updater.open = true) : checkUpdate(true)),
+        },
       ],
     };
+  }
+
+  /** 语言名用它自己的语言写，看不懂当前界面也能找到 */
+  const LANGS: { value: Lang | null; label: string }[] = [
+    { value: null, label: t("🌐  跟随系统语言") },
+    { value: "zh", label: "🌐  中文" },
+    { value: "en", label: "🌐  English" },
+  ];
+
+  function changeLang(l: Lang | null) {
+    if (savedLang() === l) return;
+    // 切换语言会重新加载界面，正在执行的操作的进度就看不到了
+    if (app.tabs.some((x) => x.busy)) return toast(t("有操作正在进行，完成后再切换语言"), "error");
+    setLang(l);
   }
 
   /** 当前分支是 Git Flow 分支时，按钮上显示类型 */
@@ -92,24 +119,24 @@
     if (!tab) return;
     const start = tab.selectedOid ?? "HEAD";
     const r = await dialog({
-      title: "新建分支",
-      message: tab.selectedOid ? `从选中的提交 ${tab.selectedOid.slice(0, 7)} 创建` : "从当前 HEAD 创建",
-      input: { placeholder: "分支名称", value: "" },
-      checkbox: { label: "创建后切换到新分支", value: true },
-      confirmText: "创建",
+      title: t("新建分支"),
+      message: tab.selectedOid ? t("从选中的提交 {0} 创建", tab.selectedOid.slice(0, 7)) : t("从当前 HEAD 创建"),
+      input: { placeholder: t("分支名称"), value: "" },
+      checkbox: { label: t("创建后切换到新分支"), value: true },
+      confirmText: t("创建"),
     });
-    if (r?.input.trim()) await tab.run({ op: "create_branch", name: r.input.trim(), start, checkout: r.checkbox }, "正在创建分支…");
+    if (r?.input.trim()) await tab.run({ op: "create_branch", name: r.input.trim(), start, checkout: r.checkbox }, t("正在创建分支…"));
   }
 
   async function stash() {
     if (!tab) return;
     const r = await dialog({
-      title: "暂存工作区 (Stash)",
-      message: "包括未跟踪的文件",
-      input: { placeholder: "说明（可选）", value: "" },
+      title: t("暂存工作区 (Stash)"),
+      message: t("包括未跟踪的文件"),
+      input: { placeholder: t("说明（可选）"), value: "" },
       confirmText: "Stash",
     });
-    if (r) await tab.run({ op: "stash_push", message: r.input || null }, "正在 stash…");
+    if (r) await tab.run({ op: "stash_push", message: r.input || null }, t("正在 stash…"));
   }
 
   async function doSearch() {
@@ -125,7 +152,7 @@
       const hits = await api.search(tab.id, q);
       tab.search.hits = hits;
       tab.search.index = 0;
-      if (hits.length === 0) toast("没有找到匹配的提交");
+      if (hits.length === 0) toast(t("没有找到匹配的提交"));
       else gotoHit(0);
     } catch (err) {
       toast(errorText(err), "error");
@@ -166,16 +193,16 @@
 <div class="toolbar">
   <div class="left">
     <div class="picker-group">
-      <span class="plabel">仓库</span>
+      <span class="plabel">{t("仓库")}</span>
       <button class="picker" onclick={(e) => (picker = below(e))}>
-        <span class="pval">{tab?.name ?? "打开仓库"}</span>
+        <span class="pval">{tab?.name ?? t("打开仓库")}</span>
         <span class="caret">▾</span>
       </button>
     </div>
     {#if tab?.repo}
       <span class="slash">/</span>
       <div class="picker-group">
-        <span class="plabel">分支</span>
+        <span class="plabel">{t("分支")}</span>
         <button
           class="picker"
           onclick={(e) => {
@@ -184,7 +211,7 @@
           }}
         >
           <span class="pval">
-            {#if head?.branch}{head.branch}{:else if head?.oid}分离 {head.oid.slice(0, 7)}{:else}—{/if}
+            {#if head?.branch}{head.branch}{:else if head?.oid}{t("分离 {0}", head.oid.slice(0, 7))}{:else}—{/if}
           </span>
           {#if headRef?.ahead}<span class="up">{headRef.ahead}↑</span>{/if}
           {#if headRef?.behind}<span class="down">{headRef.behind}↓</span>{/if}
@@ -195,9 +222,9 @@
         class="focus-btn"
         class:on={tab.focus.length === 1 && tab.focus[0] === "HEAD"}
         onclick={() => tab.setFocus(tab.focus.length === 1 && tab.focus[0] === "HEAD" ? [] : ["HEAD"])}
-        title="只显示当前分支的提交，再点一次显示全部分支"
+        title={t("只显示当前分支的提交，再点一次显示全部分支")}
       >
-        ◎ 只看当前分支
+        {t("◎ 只看当前分支")}
       </button>
     {/if}
   </div>
@@ -208,34 +235,34 @@
         class="tb"
         disabled={!tab.repo.undo || !!tab.busy}
         onclick={() => tab.undo()}
-        title={tab.repo.undo ? `撤销：${tab.repo.undo} (${isMac ? "⌘" : "Ctrl+"}Z)` : "没有可以撤销的操作"}
+        title={tab.repo.undo ? t("撤销：{0} ({1}Z)", tab.repo.undo, isMac ? "⌘" : "Ctrl+") : t("没有可以撤销的操作")}
       >
-        <span class="ico">↶</span>撤销
+        <span class="ico">↶</span>{t("撤销")}
       </button>
       <span class="sep"></span>
       <button
         class="tb"
-        onclick={() => tab.run({ op: "fetch" }, "正在获取远程更新…")}
-        title={`获取所有远程仓库的更新（不修改本地分支）${app.autoFetch ? `\n每 ${app.autoFetch} 分钟自动获取一次，可在右上角设置里修改` : ""}`}
+        onclick={() => tab.run({ op: "fetch" }, t("正在获取远程更新…"))}
+        title={t("获取所有远程仓库的更新（不修改本地分支）{0}", app.autoFetch ? t("\n每 {0} 分钟自动获取一次，可在右上角设置里修改", app.autoFetch) : "")}
       >
-        <span class="ico">⟳</span>获取
+        <span class="ico">⟳</span>{t("获取")}
       </button>
-      <button class="tb" onclick={() => tab.run({ op: "pull" }, "正在拉取…")} title="拉取当前分支">
-        <span class="ico">⬇</span>拉取
+      <button class="tb" onclick={() => tab.run({ op: "pull" }, t("正在拉取…"))} title={t("拉取当前分支")}>
+        <span class="ico">⬇</span>{t("拉取")}
         {#if headRef?.behind}<span class="badge">{headRef.behind}</span>{/if}
       </button>
-      <button class="tb" onclick={() => tab.run({ op: "push", force: false }, "正在推送…")} title="推送当前分支">
-        <span class="ico">⬆</span>推送
+      <button class="tb" onclick={() => tab.run({ op: "push", force: false }, t("正在推送…"))} title={t("推送当前分支")}>
+        <span class="ico">⬆</span>{t("推送")}
         {#if headRef?.ahead}<span class="badge">{headRef.ahead}</span>{/if}
       </button>
       <span class="sep"></span>
-      <button class="tb" onclick={newBranch} title="新建分支"><span class="ico">⑂</span>分支</button>
-      <button class="tb" onclick={stash} title="Stash 当前改动"><span class="ico">⊟</span>Stash</button>
+      <button class="tb" onclick={newBranch} title={t("新建分支")}><span class="ico">⑂</span>{t("分支")}</button>
+      <button class="tb" onclick={stash} title={t("Stash 当前改动")}><span class="ico">⊟</span>Stash</button>
       <button
         class="tb"
         disabled={!tab.stashes.length}
-        onclick={() => tab.run({ op: "stash", action: "pop", index: 0 }, "正在恢复 stash…")}
-        title="恢复最近一次 stash"><span class="ico">⊞</span>Pop</button
+        onclick={() => tab.run({ op: "stash", action: "pop", index: 0 }, t("正在恢复 stash…"))}
+        title={t("恢复最近一次 stash")}><span class="ico">⊞</span>Pop</button
       >
       <span class="sep"></span>
       <button class="tb" onclick={showFlowMenu} title="Git Flow：feature / release / hotfix">
@@ -245,32 +272,32 @@
     </div>
 
     <div class="right">
-      <button class="tb" onclick={showOpenMenu} title="用编辑器、终端或文件管理器打开这个仓库">
-        <span class="ico">↗</span>打开
+      <button class="tb" onclick={showOpenMenu} title={t("用编辑器、终端或文件管理器打开这个仓库")}>
+        <span class="ico">↗</span>{t("打开")}
       </button>
-      <button class="tb" class:on={tab.logOpen} onclick={() => (tab.logOpen = !tab.logOpen)} title="查看 git 命令和输出日志">
-        <span class="ico">≡</span>日志
+      <button class="tb" class:on={tab.logOpen} onclick={() => (tab.logOpen = !tab.logOpen)} title={t("查看 git 命令和输出日志")}>
+        <span class="ico">≡</span>{t("日志")}
       </button>
       <div class="search">
         <span class="sico">⌕</span>
         <input
           bind:this={searchInput}
           bind:value={tab.search.query}
-          placeholder={`搜索提交说明、作者、哈希 (${isMac ? "⌘" : "Ctrl+"}F)`}
+          placeholder={t("搜索提交说明、作者、哈希 ({0}F)", isMac ? "⌘" : "Ctrl+")}
           onkeydown={searchKey}
         />
         {#if searching}
-          <span class="hits">搜索中…</span>
+          <span class="hits">{t("搜索中…")}</span>
         {:else if tab.search.hits.length}
           <span class="hits">{tab.search.index + 1}/{tab.search.hits.length}{tab.search.hits.length >= 5000 ? "+" : ""}</span>
           <button class="nav" onclick={() => gotoHit(tab.search.index - 1)}>▲</button>
           <button class="nav" onclick={() => gotoHit(tab.search.index + 1)}>▼</button>
         {/if}
       </div>
-      <button class="tb icon" onclick={() => tab.refresh()} title="刷新">↻</button>
+      <button class="tb icon" onclick={() => tab.refresh()} title={t("刷新")}>↻</button>
     </div>
   {/if}
-  <button class="tb icon theme" onclick={showThemeMenu} title="设置：主题、自动获取">⚙</button>
+  <button class="tb icon theme" onclick={showThemeMenu} title={t("设置：主题、自动获取、语言")}>⚙</button>
 </div>
 
 {#if picker}
@@ -291,14 +318,14 @@
   <div class="bmenu" style="left:{branchMenu.x}px; top:{branchMenu.y}px">
     <!-- svelte-ignore a11y_autofocus -->
     <input
-      placeholder="筛选或切换本地分支"
+      placeholder={t("筛选或切换本地分支")}
       bind:value={branchFilter}
       autofocus
       onkeydown={(e) => {
         if (e.key === "Escape") branchMenu = null;
         if (e.key === "Enter" && locals[0] && !locals[0].is_head) {
           branchMenu = null;
-          tab.run({ op: "checkout", name: locals[0].name }, `正在切换到 ${locals[0].name}…`);
+          tab.run({ op: "checkout", name: locals[0].name }, t("正在切换到 {0}…", locals[0].name));
         }
       }}
     />
@@ -309,7 +336,7 @@
           class:head={r.is_head}
           onclick={() => {
             branchMenu = null;
-            if (!r.is_head) tab.run({ op: "checkout", name: r.name }, `正在切换到 ${r.name}…`);
+            if (!r.is_head) tab.run({ op: "checkout", name: r.name }, t("正在切换到 {0}…", r.name));
           }}
         >
           <span class="mark">{r.is_head ? "✓" : ""}</span>
@@ -318,7 +345,7 @@
           {#if r.behind}<span class="down">{r.behind}↓</span>{/if}
         </button>
       {:else}
-        <div class="bempty">没有匹配的分支</div>
+        <div class="bempty">{t("没有匹配的分支")}</div>
       {/each}
     </div>
   </div>

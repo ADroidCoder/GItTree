@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { PRIORITIES, branchSlug, uid, type Card, type Column } from "../lib/board";
   import { activate, app, confirm, openRepo, recentRepos } from "../lib/store.svelte";
 
@@ -61,14 +62,14 @@
 
   /** 可选操作：在关联的仓库里为任务创建分支（初始化了 Git Flow 就开始一个 feature） */
   async function createBranch() {
-    const t = repoTab;
-    if (!t || !c.title.trim()) return titleEl?.focus();
+    const tb = repoTab;
+    if (!tb || !c.title.trim()) return titleEl?.focus();
     const slug = branchSlug(c);
     creating = true;
-    const name = flowReady ? `${t.flow!.feature}${slug}` : slug;
+    const name = flowReady ? `${tb.flow!.feature}${slug}` : slug;
     const ok = flowReady
-      ? await t.run({ op: "flow_start", kind: "feature", name: slug, base: null }, `正在创建 ${name}…`)
-      : await t.run({ op: "create_branch", name, start: "HEAD", checkout: true }, `正在创建 ${name}…`);
+      ? await tb.run({ op: "flow_start", kind: "feature", name: slug, base: null }, t("正在创建 {0}…", name))
+      : await tb.run({ op: "create_branch", name, start: "HEAD", checkout: true }, t("正在创建 {0}…", name));
     creating = false;
     if (ok) c.branch = name;
   }
@@ -76,12 +77,12 @@
   async function gotoRepo() {
     save();
     await openRepo(c.repo);
-    const t = app.tabs.find((x) => x.id === c.repo);
-    const ref = t?.repo?.refs.find((r) => r.kind === "local" && r.name === c.branch);
-    if (t && ref?.row != null) {
-      activate(t);
-      t.select(ref.row, ref.oid);
-      t.scrollTo(ref.row);
+    const tb = app.tabs.find((x) => x.id === c.repo);
+    const ref = tb?.repo?.refs.find((r) => r.kind === "local" && r.name === c.branch);
+    if (tb && ref?.row != null) {
+      activate(tb);
+      tb.select(ref.row, ref.oid);
+      tb.scrollTo(ref.row);
     }
   }
 
@@ -94,7 +95,7 @@
   }
 
   async function remove() {
-    if (await confirm("删除任务", `确定删除 “${c.title || "（无标题）"}” 吗？`, "删除", true)) onDelete(c.id);
+    if (await confirm(t("删除任务"), t("确定删除 “{0}” 吗？", c.title || t("（无标题）")), t("删除"), true)) onDelete(c.id);
   }
 
   function onKey(e: KeyboardEvent) {
@@ -110,17 +111,17 @@
       class="title-input"
       bind:this={titleEl}
       bind:value={c.title}
-      placeholder="任务标题"
+      placeholder={t("任务标题")}
       onkeydown={(e) => e.key === "Enter" && !e.isComposing && save()}
     />
     {#if c.archived}
-      <div class="archived">这个任务已经归档，不在看板上显示。保存修改不会恢复，点下面的「恢复到看板」才会放回去。</div>
+      <div class="archived">{t("这个任务已经归档，不在看板上显示。保存修改不会恢复，点下面的「恢复到看板」才会放回去。")}</div>
     {/if}
-    <textarea bind:value={c.description} rows="5" placeholder="描述（可选）"></textarea>
+    <textarea bind:value={c.description} rows="5" placeholder={t("描述（可选）")}></textarea>
 
     <div class="checklist">
       <div class="ck-head">
-        <span>检查项</span>
+        <span>{t("检查项")}</span>
         {#if c.checklist.length}
           <span class="ck-count">{checked}/{c.checklist.length}</span>
           <span class="ck-bar"><span style="width:{(checked / c.checklist.length) * 100}%"></span></span>
@@ -130,13 +131,13 @@
         <div class="ck-item">
           <input type="checkbox" bind:checked={item.done} />
           <input class="ck-text" class:done={item.done} bind:value={item.text} onkeydown={(e) => e.key === "Enter" && e.preventDefault()} />
-          <button class="ck-del" title="删除" onclick={() => c.checklist.splice(i, 1)}>✕</button>
+          <button class="ck-del" title={t("删除")} onclick={() => c.checklist.splice(i, 1)}>✕</button>
         </div>
       {/each}
       <input
         class="ck-new"
         bind:value={newItem}
-        placeholder="＋ 添加检查项，回车确认"
+        placeholder={t("＋ 添加检查项，回车确认")}
         onkeydown={(e) => {
           if (e.key === "Enter" && !e.isComposing && !e.metaKey && !e.ctrlKey) {
             e.preventDefault();
@@ -147,18 +148,18 @@
     </div>
 
     <div class="grid">
-      <label for="t-col">状态</label>
+      <label for="t-col">{t("状态")}</label>
       <select id="t-col" bind:value={c.column}>
         {#each columns as col (col.id)}<option value={col.id}>{col.name}</option>{/each}
       </select>
 
-      <label for="t-who">负责人</label>
-      <input id="t-who" bind:value={c.assignee} list="t-assignees" placeholder="姓名" />
+      <label for="t-who">{t("负责人")}</label>
+      <input id="t-who" bind:value={c.assignee} list="t-assignees" placeholder={t("姓名")} />
       <datalist id="t-assignees">
         {#each assignees as a (a)}<option value={a}></option>{/each}
       </datalist>
 
-      <span class="label">优先级</span>
+      <span class="label">{t("优先级")}</span>
       <div class="prios">
         {#each PRIORITIES as p (p.value)}
           <button class="prio" class:on={c.priority === p.value} style="--p:{p.color}" onclick={() => (c.priority = p.value)}>
@@ -167,49 +168,49 @@
         {/each}
       </div>
 
-      <label for="t-due">截止日期</label>
+      <label for="t-due">{t("截止日期")}</label>
       <div class="row">
         <input id="t-due" type="date" bind:value={c.due} />
-        {#if c.due}<button class="small" onclick={() => (c.due = "")}>清除</button>{/if}
+        {#if c.due}<button class="small" onclick={() => (c.due = "")}>{t("清除")}</button>{/if}
       </div>
 
-      <label for="t-repo">关联仓库</label>
+      <label for="t-repo">{t("关联仓库")}</label>
       <div class="row">
         <select id="t-repo" bind:value={c.repo}>
-          <option value="">不关联</option>
+          <option value="">{t("不关联")}</option>
           {#each repoOptions as r (r)}<option value={r}>{repoName(r)} — {r}</option>{/each}
         </select>
-        {#if c.repo}<button class="small" onclick={gotoRepo}>{branchExists ? "在图中查看分支" : "打开仓库"}</button>{/if}
+        {#if c.repo}<button class="small" onclick={gotoRepo}>{branchExists ? t("在图中查看分支") : t("打开仓库")}</button>{/if}
       </div>
 
       {#if c.repo}
-        <label for="t-branch">关联分支</label>
+        <label for="t-branch">{t("关联分支")}</label>
         <div class="row">
-          <input id="t-branch" bind:value={c.branch} list="t-branches" placeholder="选择或输入分支名（可选）" spellcheck="false" />
+          <input id="t-branch" bind:value={c.branch} list="t-branches" placeholder={t("选择或输入分支名（可选）")} spellcheck="false" />
           <datalist id="t-branches">
             {#each localBranches as b (b)}<option value={b}></option>{/each}
           </datalist>
           {#if !c.branch && repoTab}
-            <button class="small" disabled={creating} onclick={createBranch} title={flowReady ? "在这个仓库里用 Git Flow 开始一个 feature" : "在这个仓库里从当前 HEAD 创建并切换到新分支"}>
-              {flowReady ? "开始 Feature" : "创建分支"}
+            <button class="small" disabled={creating} onclick={createBranch} title={flowReady ? t("在这个仓库里用 Git Flow 开始一个 feature") : t("在这个仓库里从当前 HEAD 创建并切换到新分支")}>
+              {flowReady ? t("开始 Feature") : t("创建分支")}
             </button>
           {/if}
         </div>
       {/if}
     </div>
     {#if c.repo && !repoTab}
-      <div class="hint">这个仓库没有打开，打开后可以选择分支</div>
+      <div class="hint">{t("这个仓库没有打开，打开后可以选择分支")}</div>
     {:else if c.repo && !c.branch && c.title.trim()}
-      <div class="hint">点“{flowReady ? "开始 Feature" : "创建分支"}”会创建 {flowReady ? repoTab?.flow?.feature : ""}{branchSlug(c)}，不点则不做任何 git 操作</div>
+      <div class="hint">{t("点“{0}”会创建 {1}{2}，不点则不做任何 git 操作", flowReady ? t("开始 Feature") : t("创建分支"), flowReady ? repoTab?.flow?.feature : "", branchSlug(c))}</div>
     {/if}
 
     <div class="buttons">
-      {#if !isNew}<button class="danger" onclick={remove}>删除</button>{/if}
-      {#if !isNew && !c.archived}<button onclick={() => onArchive(c.id)} title="从看板上收起，可以在「归档」里恢复">归档</button>{/if}
-      {#if c.archived}<button onclick={restore}>恢复到看板</button>{/if}
+      {#if !isNew}<button class="danger" onclick={remove}>{t("删除")}</button>{/if}
+      {#if !isNew && !c.archived}<button onclick={() => onArchive(c.id)} title={t("从看板上收起，可以在「归档」里恢复")}>{t("归档")}</button>{/if}
+      {#if c.archived}<button onclick={restore}>{t("恢复到看板")}</button>{/if}
       <span class="grow"></span>
-      <button onclick={onClose}>取消</button>
-      <button class="primary" onclick={save}>{isNew ? "创建" : "保存"}</button>
+      <button onclick={onClose}>{t("取消")}</button>
+      <button class="primary" onclick={save}>{isNew ? t("创建") : t("保存")}</button>
     </div>
   </div>
 </div>

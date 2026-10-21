@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import type { RefInfo, Row, Stash } from "../lib/api";
   import { app, confirm, dialog, openFlow, toast, type RepoTab } from "../lib/store.svelte";
   import Sidebar from "./Sidebar.svelte";
@@ -21,35 +22,35 @@
 
   function copy(text: string) {
     navigator.clipboard.writeText(text).then(
-      () => toast("已复制"),
-      () => toast("复制失败", "error"),
+      () => toast(t("已复制")),
+      () => toast(t("复制失败"), "error"),
     );
   }
 
   export async function createBranchAt(start: string, label: string) {
     const r = await dialog({
-      title: "新建分支",
-      message: `从 ${label} 创建`,
-      input: { placeholder: "分支名称", value: "" },
-      checkbox: { label: "创建后切换到新分支", value: true },
-      confirmText: "创建",
+      title: t("新建分支"),
+      message: t("从 {0} 创建", label),
+      input: { placeholder: t("分支名称"), value: "" },
+      checkbox: { label: t("创建后切换到新分支"), value: true },
+      confirmText: t("创建"),
     });
-    if (r?.input.trim()) await tab.run({ op: "create_branch", name: r.input.trim(), start, checkout: r.checkbox }, "正在创建分支…");
+    if (r?.input.trim()) await tab.run({ op: "create_branch", name: r.input.trim(), start, checkout: r.checkbox }, t("正在创建分支…"));
   }
 
   async function createTagAt(oid: string) {
     const r = await dialog({
-      title: "新建标签",
-      message: `在提交 ${oid.slice(0, 7)} 上创建标签`,
-      input: { placeholder: "标签名称，例如 v1.0.0", value: "" },
-      confirmText: "下一步",
+      title: t("新建标签"),
+      message: t("在提交 {0} 上创建标签", oid.slice(0, 7)),
+      input: { placeholder: t("标签名称，例如 v1.0.0"), value: "" },
+      confirmText: t("下一步"),
     });
     if (!r?.input.trim()) return;
     const m = await dialog({
-      title: "标签说明",
-      message: "填写说明会创建附注标签，留空则创建轻量标签",
-      input: { placeholder: "说明（可选）", value: "", multiline: true },
-      confirmText: "创建",
+      title: t("标签说明"),
+      message: t("填写说明会创建附注标签，留空则创建轻量标签"),
+      input: { placeholder: t("说明（可选）"), value: "", multiline: true },
+      confirmText: t("创建"),
     });
     if (m) await tab.run({ op: "create_tag", name: r.input.trim(), oid, message: m.input || null });
   }
@@ -58,39 +59,39 @@
     const short = r.name.slice(r.name.indexOf("/") + 1);
     const existing = tab.repo?.refs.find((x) => x.kind === "local" && x.name === short);
     if (existing) {
-      if (!existing.is_head) await tab.run({ op: "checkout", name: short }, `正在切换到 ${short}…`);
+      if (!existing.is_head) await tab.run({ op: "checkout", name: short }, t("正在切换到 {0}…", short));
       return;
     }
     const d = await dialog({
-      title: "检出远程分支",
-      message: `创建本地分支并跟踪 ${r.name}`,
-      input: { placeholder: "本地分支名称", value: short },
-      confirmText: "检出",
+      title: t("检出远程分支"),
+      message: t("创建本地分支并跟踪 {0}", r.name),
+      input: { placeholder: t("本地分支名称"), value: short },
+      confirmText: t("检出"),
     });
-    if (d?.input.trim()) await tab.run({ op: "checkout_remote", remote: r.name, local: d.input.trim() }, "正在检出…");
+    if (d?.input.trim()) await tab.run({ op: "checkout_remote", remote: r.name, local: d.input.trim() }, t("正在检出…"));
   }
 
   function onRefDblClick(r: RefInfo) {
-    if (r.kind === "local" && !r.is_head) tab.run({ op: "checkout", name: r.name }, `正在切换到 ${r.name}…`);
+    if (r.kind === "local" && !r.is_head) tab.run({ op: "checkout", name: r.name }, t("正在切换到 {0}…", r.name));
     else if (r.kind === "remote") checkoutRemote(r);
   }
 
   async function mergeInto(target: string) {
-    if (await confirm("合并", `将 ${target} 合并到当前分支 ${current}？`, "合并"))
-      await tab.run({ op: "merge", target }, "正在合并…");
+    if (await confirm(t("合并"), t("将 {0} 合并到当前分支 {1}？", target, current), t("合并")))
+      await tab.run({ op: "merge", target }, t("正在合并…"));
   }
 
   async function rebaseOnto(onto: string) {
-    if (await confirm("变基", `将当前分支 ${current} 变基到 ${onto}？\n变基会改写当前分支的提交历史。`, "变基"))
-      await tab.run({ op: "rebase", onto }, "正在变基…");
+    if (await confirm(t("变基"), t("将当前分支 {0} 变基到 {1}？\n变基会改写当前分支的提交历史。", current, onto), t("变基")))
+      await tab.run({ op: "rebase", onto }, t("正在变基…"));
   }
 
   async function deleteBranch(r: RefInfo) {
     const d = await dialog({
-      title: "删除分支",
-      message: `确定删除本地分支 ${r.name} 吗？`,
-      checkbox: { label: "强制删除（即使还没有合并）", value: false },
-      confirmText: "删除",
+      title: t("删除分支"),
+      message: t("确定删除本地分支 {0} 吗？", r.name),
+      checkbox: { label: t("强制删除（即使还没有合并）"), value: false },
+      confirmText: t("删除"),
       danger: true,
     });
     if (d) await tab.run({ op: "delete_branch", name: r.name, force: d.checkbox });
@@ -100,64 +101,64 @@
     const items: MenuItem[] = [];
     if (r.kind !== "tag") {
       const shown = tab.focus.includes(r.full);
-      items.push({ label: "只显示这个分支", action: () => tab.setFocus([r.full]) });
+      items.push({ label: t("只显示这个分支"), action: () => tab.setFocus([r.full]) });
       if (tab.focus.length && !shown && !(tab.focus.length === 1 && tab.focus[0] === "HEAD"))
-        items.push({ label: "同时显示这个分支", action: () => tab.setFocus([...tab.focus, r.full]) });
+        items.push({ label: t("同时显示这个分支"), action: () => tab.setFocus([...tab.focus, r.full]) });
       if (shown && tab.focus.length > 1)
-        items.push({ label: "不再显示这个分支", action: () => tab.setFocus(tab.focus.filter((f) => f !== r.full)) });
-      if (tab.focus.length) items.push({ label: "显示全部分支", action: () => tab.setFocus([]) });
+        items.push({ label: t("不再显示这个分支"), action: () => tab.setFocus(tab.focus.filter((f) => f !== r.full)) });
+      if (tab.focus.length) items.push({ label: t("显示全部分支"), action: () => tab.setFocus([]) });
       items.push("sep");
     }
     const fb = r.kind === "local" ? tab.flowBranch(r.name) : null;
     if (fb) {
       items.push(
-        { label: `Git Flow：完成 ${fb.kind} ${fb.name}…`, action: () => openFlow({ tab, mode: "finish", ...fb }) },
-        { label: `Git Flow：推送到远程`, action: () => tab.run({ op: "flow_publish", ...fb }, "正在推送…") },
+        { label: t("Git Flow：完成 {0} {1}…", fb.kind, fb.name), action: () => openFlow({ tab, mode: "finish", ...fb }) },
+        { label: t("Git Flow：推送到远程"), action: () => tab.run({ op: "flow_publish", ...fb }, t("正在推送…")) },
         "sep",
       );
     }
     if (r.kind === "local") {
       items.push(
-        { label: `检出 ${r.name}`, disabled: r.is_head, action: () => tab.run({ op: "checkout", name: r.name }, "正在切换分支…") },
+        { label: t("检出 {0}", r.name), disabled: r.is_head, action: () => tab.run({ op: "checkout", name: r.name }, t("正在切换分支…")) },
         "sep",
-        { label: `将 ${r.name} 合并到 ${current}`, disabled: r.is_head, action: () => mergeInto(r.name) },
-        { label: `将 ${current} 变基到 ${r.name}`, disabled: r.is_head, action: () => rebaseOnto(r.name) },
+        { label: t("将 {0} 合并到 {1}", r.name, current), disabled: r.is_head, action: () => mergeInto(r.name) },
+        { label: t("将 {0} 变基到 {1}", current, r.name), disabled: r.is_head, action: () => rebaseOnto(r.name) },
         "sep",
-        { label: "从这里新建分支…", action: () => createBranchAt(r.name, r.name) },
-        { label: "复制分支名", action: () => copy(r.name) },
+        { label: t("从这里新建分支…"), action: () => createBranchAt(r.name, r.name) },
+        { label: t("复制分支名"), action: () => copy(r.name) },
         "sep",
-        { label: `删除分支 ${r.name}…`, danger: true, disabled: r.is_head, action: () => deleteBranch(r) },
+        { label: t("删除分支 {0}…", r.name), danger: true, disabled: r.is_head, action: () => deleteBranch(r) },
       );
     } else if (r.kind === "remote") {
       items.push(
-        { label: "检出为本地分支…", action: () => checkoutRemote(r) },
+        { label: t("检出为本地分支…"), action: () => checkoutRemote(r) },
         "sep",
-        { label: `将 ${r.name} 合并到 ${current}`, action: () => mergeInto(r.name) },
-        { label: `将 ${current} 变基到 ${r.name}`, action: () => rebaseOnto(r.name) },
+        { label: t("将 {0} 合并到 {1}", r.name, current), action: () => mergeInto(r.name) },
+        { label: t("将 {0} 变基到 {1}", current, r.name), action: () => rebaseOnto(r.name) },
         "sep",
-        { label: "从这里新建分支…", action: () => createBranchAt(r.name, r.name) },
-        { label: "复制分支名", action: () => copy(r.name) },
+        { label: t("从这里新建分支…"), action: () => createBranchAt(r.name, r.name) },
+        { label: t("复制分支名"), action: () => copy(r.name) },
         "sep",
         {
-          label: `删除远程分支 ${r.name}…`,
+          label: t("删除远程分支 {0}…", r.name),
           danger: true,
           action: async () => {
-            if (await confirm("删除远程分支", `确定从远程仓库删除 ${r.name} 吗？其他人将无法再获取这个分支。`, "删除", true))
-              await tab.run({ op: "delete_remote_branch", name: r.name }, "正在删除远程分支…");
+            if (await confirm(t("删除远程分支"), t("确定从远程仓库删除 {0} 吗？其他人将无法再获取这个分支。", r.name), t("删除"), true))
+              await tab.run({ op: "delete_remote_branch", name: r.name }, t("正在删除远程分支…"));
           },
         },
       );
     } else {
       items.push(
-        { label: "检出此标签（分离头指针）", action: () => tab.run({ op: "checkout_detached", oid: r.oid }, "正在检出…") },
-        { label: "从这里新建分支…", action: () => createBranchAt(r.oid, r.name) },
-        { label: "复制标签名", action: () => copy(r.name) },
+        { label: t("检出此标签（分离头指针）"), action: () => tab.run({ op: "checkout_detached", oid: r.oid }, t("正在检出…")) },
+        { label: t("从这里新建分支…"), action: () => createBranchAt(r.oid, r.name) },
+        { label: t("复制标签名"), action: () => copy(r.name) },
         "sep",
         {
-          label: `删除标签 ${r.name}`,
+          label: t("删除标签 {0}", r.name),
           danger: true,
           action: async () => {
-            if (await confirm("删除标签", `确定删除本地标签 ${r.name} 吗？`, "删除", true))
+            if (await confirm(t("删除标签"), t("确定删除本地标签 {0} 吗？", r.name), t("删除"), true))
               await tab.run({ op: "delete_tag", name: r.name });
           },
         },
@@ -171,23 +172,23 @@
     if (src.full === dst.full || src.kind === "tag" || dst.kind === "tag") return;
     const items: MenuItem[] = [];
     const ask = (title: string, msg: string, op: () => Promise<unknown>) => async () => {
-      if (await confirm(title, msg, "确定")) await op();
+      if (await confirm(title, msg, t("确定"))) await op();
     };
     if (dst.is_head) {
       items.push(
-        { label: `把 ${src.name} 合并到 ${dst.name}`, action: ask("合并", `将 ${src.name} 合并到当前分支 ${dst.name}？`, () => tab.run({ op: "merge", target: src.name }, "正在合并…")) },
-        { label: `把 ${dst.name} 变基到 ${src.name}`, action: ask("变基", `将当前分支 ${dst.name} 变基到 ${src.name}？\n变基会改写 ${dst.name} 的提交历史。`, () => tab.run({ op: "rebase", onto: src.name }, "正在变基…")) },
+        { label: t("把 {0} 合并到 {1}", src.name, dst.name), action: ask(t("合并"), t("将 {0} 合并到当前分支 {1}？", src.name, dst.name), () => tab.run({ op: "merge", target: src.name }, t("正在合并…"))) },
+        { label: t("把 {0} 变基到 {1}", dst.name, src.name), action: ask(t("变基"), t("将当前分支 {0} 变基到 {1}？\n变基会改写 {2} 的提交历史。", dst.name, src.name, dst.name), () => tab.run({ op: "rebase", onto: src.name }, t("正在变基…"))) },
       );
     } else {
       if (src.is_head)
-        items.push({ label: `把 ${src.name} 变基到 ${dst.name}`, action: ask("变基", `将当前分支 ${src.name} 变基到 ${dst.name}？\n变基会改写 ${src.name} 的提交历史。`, () => tab.run({ op: "rebase", onto: dst.name }, "正在变基…")) });
+        items.push({ label: t("把 {0} 变基到 {1}", src.name, dst.name), action: ask(t("变基"), t("将当前分支 {0} 变基到 {1}？\n变基会改写 {2} 的提交历史。", src.name, dst.name, src.name), () => tab.run({ op: "rebase", onto: dst.name }, t("正在变基…"))) });
       if (dst.kind === "local")
-        items.push({ label: `切换到 ${dst.name}，并把 ${src.name} 合并进去`, action: ask("合并", `先切换到 ${dst.name}，再把 ${src.name} 合并进去？`, () => tab.run({ op: "merge_into", branch: dst.name, source: src.name }, "正在合并…")) });
+        items.push({ label: t("切换到 {0}，并把 {1} 合并进去", dst.name, src.name), action: ask(t("合并"), t("先切换到 {0}，再把 {1} 合并进去？", dst.name, src.name), () => tab.run({ op: "merge_into", branch: dst.name, source: src.name }, t("正在合并…"))) });
       if (!src.is_head && src.kind === "local")
-        items.push({ label: `把 ${src.name} 变基到 ${dst.name}（会切换到 ${src.name}）`, action: ask("变基", `先切换到 ${src.name}，再把它变基到 ${dst.name}？\n变基会改写 ${src.name} 的提交历史。`, () => tab.run({ op: "rebase_branch", branch: src.name, onto: dst.name }, "正在变基…")) });
+        items.push({ label: t("把 {0} 变基到 {1}（会切换到 {2}）", src.name, dst.name, src.name), action: ask(t("变基"), t("先切换到 {0}，再把它变基到 {1}？\n变基会改写 {2} 的提交历史。", src.name, dst.name, src.name), () => tab.run({ op: "rebase_branch", branch: src.name, onto: dst.name }, t("正在变基…"))) });
     }
     if (!items.length) {
-      toast(`不能把 ${src.name} 合并到远程分支 ${dst.name}，请拖到本地分支上`, "error");
+      toast(t("不能把 {0} 合并到远程分支 {1}，请拖到本地分支上", src.name, dst.name), "error");
       return;
     }
     menu = { x: e.clientX, y: e.clientY, items };
@@ -197,49 +198,49 @@
     const short = row.oid.slice(0, 7);
     const reset = (mode: "soft" | "mixed" | "hard") => async () => {
       const desc = {
-        soft: "保留工作区和暂存区的改动",
-        mixed: "保留工作区改动，清空暂存区",
-        hard: "丢弃所有未提交的改动！此操作无法撤销",
+        soft: t("保留工作区和暂存区的改动"),
+        mixed: t("保留工作区改动，清空暂存区"),
+        hard: t("丢弃所有未提交的改动！此操作无法撤销"),
       }[mode];
-      if (await confirm(`重置 (${mode})`, `将 ${current} 重置到 ${short}？\n${desc}`, "重置", mode === "hard"))
-        await tab.run({ op: "reset", oid: row.oid, mode }, "正在重置…");
+      if (await confirm(t("重置 ({0})", mode), t("将 {0} 重置到 {1}？\n{2}", current, short, desc), t("重置"), mode === "hard"))
+        await tab.run({ op: "reset", oid: row.oid, mode }, t("正在重置…"));
     };
     menu = {
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "检出此提交（分离头指针）", action: () => tab.run({ op: "checkout_detached", oid: row.oid }, "正在检出…") },
-        { label: "在此新建分支…", action: () => createBranchAt(row.oid, `提交 ${short}`) },
-        { label: "在此新建标签…", action: () => createTagAt(row.oid) },
+        { label: t("检出此提交（分离头指针）"), action: () => tab.run({ op: "checkout_detached", oid: row.oid }, t("正在检出…")) },
+        { label: t("在此新建分支…"), action: () => createBranchAt(row.oid, t("提交 {0}", short)) },
+        { label: t("在此新建标签…"), action: () => createTagAt(row.oid) },
         "sep",
         {
-          label: `Cherry-pick 到 ${current}`,
+          label: t("Cherry-pick 到 {0}", current),
           action: async () => {
-            if (await confirm("Cherry-pick", `把提交 ${short} 应用到 ${current}？`, "确定"))
-              await tab.run({ op: "cherry_pick", oid: row.oid }, "正在 cherry-pick…");
+            if (await confirm("Cherry-pick", t("把提交 {0} 应用到 {1}？", short, current), t("确定")))
+              await tab.run({ op: "cherry_pick", oid: row.oid }, t("正在 cherry-pick…"));
           },
         },
         {
-          label: "撤销此提交 (revert)",
+          label: t("撤销此提交 (revert)"),
           action: async () => {
-            if (await confirm("Revert", `创建一个新提交来撤销 ${short} 的改动？`, "确定"))
-              await tab.run({ op: "revert", oid: row.oid }, "正在 revert…");
+            if (await confirm("Revert", t("创建一个新提交来撤销 {0} 的改动？", short), t("确定")))
+              await tab.run({ op: "revert", oid: row.oid }, t("正在 revert…"));
           },
         },
         "sep",
         {
-          label: `从这里开始交互式变基…`,
-          hint: "整理提交",
+          label: t("从这里开始交互式变基…"),
+          hint: t("整理提交"),
           disabled: !tab.repo?.head.branch,
           action: () => (app.rebaseDialog = { tab, from: row.oid }),
         },
         "sep",
-        { label: `重置 ${current} 到这里 - Soft`, action: reset("soft") },
-        { label: `重置 ${current} 到这里 - Mixed`, action: reset("mixed") },
-        { label: `重置 ${current} 到这里 - Hard`, danger: true, action: reset("hard") },
+        { label: t("重置 {0} 到这里 - Soft", current), action: reset("soft") },
+        { label: t("重置 {0} 到这里 - Mixed", current), action: reset("mixed") },
+        { label: t("重置 {0} 到这里 - Hard", current), danger: true, action: reset("hard") },
         "sep",
-        { label: "复制提交哈希", hint: short, action: () => copy(row.oid) },
-        { label: "复制提交说明", action: () => copy(row.summary) },
+        { label: t("复制提交哈希"), hint: short, action: () => copy(row.oid) },
+        { label: t("复制提交说明"), action: () => copy(row.summary) },
       ],
     };
   }
@@ -249,14 +250,14 @@
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "应用 (apply)", action: () => tab.run({ op: "stash", action: "apply", index: s.index }, "正在应用 stash…") },
-        { label: "恢复并删除 (pop)", action: () => tab.run({ op: "stash", action: "pop", index: s.index }, "正在恢复 stash…") },
+        { label: t("应用 (apply)"), action: () => tab.run({ op: "stash", action: "apply", index: s.index }, t("正在应用 stash…")) },
+        { label: t("恢复并删除 (pop)"), action: () => tab.run({ op: "stash", action: "pop", index: s.index }, t("正在恢复 stash…")) },
         "sep",
         {
-          label: "删除",
+          label: t("删除"),
           danger: true,
           action: async () => {
-            if (await confirm("删除 stash", `确定删除 “${s.message}” 吗？`, "删除", true))
+            if (await confirm(t("删除 stash"), t("确定删除 “{0}” 吗？", s.message), t("删除"), true))
               await tab.run({ op: "stash", action: "drop", index: s.index });
           },
         },
@@ -286,13 +287,13 @@
 
 {#if tab.error}
   <div class="state">
-    <div class="err-title">无法打开仓库</div>
+    <div class="err-title">{t("无法打开仓库")}</div>
     <div class="err">{tab.error}</div>
     <div class="err-path">{tab.requestedPath}</div>
-    <button onclick={() => tab.open()}>重试</button>
+    <button onclick={() => tab.open()}>{t("重试")}</button>
   </div>
 {:else if !tab.repo}
-  <div class="state"><div class="spinner"></div>正在打开 {tab.name}…</div>
+  <div class="state"><div class="spinner"></div>{t("正在打开 {0}…", tab.name)}</div>
 {:else}
   <div class="main" style="grid-template-columns: {sideW}px 1fr {panelW}px">
     <div class="side">
@@ -328,7 +329,7 @@
       {:else if tab.selectedOid}
         <CommitPanel {tab} oid={tab.selectedOid} />
       {:else}
-        <div class="placeholder">选择一个提交查看详情</div>
+        <div class="placeholder">{t("选择一个提交查看详情")}</div>
       {/if}
     </div>
   </div>

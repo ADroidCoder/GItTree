@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { app, forgetRepo, openRepo, recentRepos } from "../lib/store.svelte";
 
   /** 打开仓库的下拉菜单：打开本地文件夹，或从最近打开的仓库里选 */
@@ -20,23 +21,23 @@
     onclick={() => {
       onClose();
       onOpenFolder();
-    }}>📂 打开本地仓库…</button
+    }}>{t("📂 打开本地仓库…")}</button
   >
   <button
     class="item strong"
     onclick={() => {
       onClose();
       app.cloneDialog = { mode: "clone" };
-    }}>⤓ 克隆远程仓库…</button
+    }}>{t("⤓ 克隆远程仓库…")}</button
   >
   <button
     class="item strong"
     onclick={() => {
       onClose();
       app.cloneDialog = { mode: "init" };
-    }}>＋ 新建仓库…</button
+    }}>{t("＋ 新建仓库…")}</button
   >
-  {#if recent.length}<div class="sep-title">最近打开</div>{/if}
+  {#if recent.length}<div class="sep-title">{t("最近打开")}</div>{/if}
   {#each recent as p (p)}
     <div class="row">
       <button
@@ -47,12 +48,12 @@
         }}
         title={p}
       >
-        <span class="name">{p.split(/[\\/]/).filter(Boolean).pop()}{openIds.has(p) ? " · 已打开" : ""}</span>
+        <span class="name">{p.split(/[\\/]/).filter(Boolean).pop()}{openIds.has(p) ? t(" · 已打开") : ""}</span>
         <span class="path">{p}</span>
       </button>
       <button
         class="x"
-        title="从列表移除"
+        title={t("从列表移除")}
         onclick={() => {
           forgetRepo(p);
           recent = recentRepos();

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { syncBackendLang, t } from "./lib/i18n";
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -16,16 +17,20 @@
   import CloneDialog from "./components/CloneDialog.svelte";
   import RebaseDialog from "./components/RebaseDialog.svelte";
   import AskPass from "./components/AskPass.svelte";
+  import UpdateDialog from "./components/UpdateDialog.svelte";
+  import { startUpdater, updater } from "./lib/updater.svelte";
 
   let toolbar = $state<ReturnType<typeof Toolbar>>();
   const tab = $derived(activeTab());
 
   async function openFolder() {
-    const dir = await openDialog({ directory: true, title: "选择 Git 仓库所在的文件夹" });
+    const dir = await openDialog({ directory: true, title: t("选择 Git 仓库所在的文件夹") });
     if (typeof dir === "string") await openRepo(dir);
   }
 
   onMount(() => {
+    syncBackendLang();
+    startUpdater();
     // 恢复上次打开的标签页；命令行指定的仓库额外打开
     api.initialRepo().then((p) => restoreTabs(p));
     preloadTasks();
@@ -112,6 +117,9 @@
 </div>
 {#if app.askpass.length}
   <AskPass />
+{/if}
+{#if updater.open && updater.update}
+  <UpdateDialog />
 {/if}
 {#if app.cloneDialog}
   <CloneDialog />

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { api, type PlanCommit, type RebaseStep } from "../lib/api";
   import { app, errorText } from "../lib/store.svelte";
   import { relativeTime } from "../lib/util";
@@ -64,10 +65,10 @@
 
   const merges = $derived(items.filter((it) => it.c.parents > 1).length);
   const problem = $derived.by(() => {
-    if (merges) return `范围内有 ${merges} 个合并提交，交互式变基暂不支持合并提交，请选择更近的起点`;
+    if (merges) return t("范围内有 {0} 个合并提交，交互式变基暂不支持合并提交，请选择更近的起点", merges);
     const kept = items.filter((it) => it.action !== "drop");
-    if (!kept.length) return "至少要保留一个提交";
-    if (kept[kept.length - 1].action === "squash") return "最下面（最早）的提交不能合并到下面，它下面没有提交了";
+    if (!kept.length) return t("至少要保留一个提交");
+    if (kept[kept.length - 1].action === "squash") return t("最下面（最早）的提交不能合并到下面，它下面没有提交了");
     return null;
   });
   const changed = $derived(
@@ -113,7 +114,7 @@
     });
     running = true;
     app.rebaseDialog = null;
-    await tab.run({ op: "rebase_interactive", from, steps }, "正在变基…");
+    await tab.run({ op: "rebase_interactive", from, steps }, t("正在变基…"));
   }
 
   function close() {
@@ -126,15 +127,14 @@
 <div class="overlay">
   <div class="dialog" role="dialog" aria-modal="true">
     <div class="head">
-      <div class="title">交互式变基 · {tab.repo?.head.branch ?? "HEAD"}</div>
+      <div class="title">{t("交互式变基 · {0}", tab.repo?.head.branch ?? "HEAD")}</div>
       <div class="sub">
-        和提交图一样，新的提交在上面。拖动 ⋮⋮ 调整顺序；“合并到下面”会把这个提交并进下面最近的保留提交；点提交说明可以修改。
-        做错了可以用工具栏的「撤销」退回。
+        {t("和提交图一样，新的提交在上面。拖动 ⋮⋮ 调整顺序；“合并到下面”会把这个提交并进下面最近的保留提交；点提交说明可以修改。 做错了可以用工具栏的「撤销」退回。")}
       </div>
     </div>
 
     {#if loading}
-      <div class="msg">加载中…</div>
+      <div class="msg">{t("加载中…")}</div>
     {:else if error}
       <div class="msg error">{error}</div>
     {:else}
@@ -161,7 +161,7 @@
               draggable="true"
               role="button"
               tabindex="-1"
-              title="拖动调整顺序"
+              title={t("拖动调整顺序")}
               ondragstart={(e) => {
                 dragIdx = i;
                 e.dataTransfer?.setData("text/plain", it.c.oid);
@@ -169,9 +169,9 @@
               ondragend={() => (dragIdx = overIdx = null)}>⋮⋮</span
             >
             <div class="acts">
-              <button class:on={it.action === "pick"} onclick={() => setAction(it, "pick")} title="保留这个提交">保留</button>
-              <button class:on={it.action === "squash"} onclick={() => setAction(it, "squash")} title="把这个提交的改动并进下面最近的保留提交">合并到下面</button>
-              <button class:on={it.action === "drop"} class="drop" onclick={() => setAction(it, "drop")} title="删除这个提交和它的改动">删除</button>
+              <button class:on={it.action === "pick"} onclick={() => setAction(it, "pick")} title={t("保留这个提交")}>{t("保留")}</button>
+              <button class:on={it.action === "squash"} onclick={() => setAction(it, "squash")} title={t("把这个提交的改动并进下面最近的保留提交")}>{t("合并到下面")}</button>
+              <button class:on={it.action === "drop"} class="drop" onclick={() => setAction(it, "drop")} title={t("删除这个提交和它的改动")}>{t("删除")}</button>
             </div>
             <div class="main">
               {#if editing === it.c.oid && it.action === "pick"}
@@ -182,8 +182,8 @@
                   onkeydown={(e) => e.key === "Escape" && (e.stopPropagation(), (editing = null))}
                 ></textarea>
                 <div class="erow">
-                  <button class="small" onclick={() => (editing = null)}>完成</button>
-                  {#if it.edited !== null}<button class="small" onclick={() => (it.edited = null)}>还原说明</button>{/if}
+                  <button class="small" onclick={() => (editing = null)}>{t("完成")}</button>
+                  {#if it.edited !== null}<button class="small" onclick={() => (it.edited = null)}>{t("还原说明")}</button>{/if}
                 </div>
               {:else}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -191,40 +191,40 @@
                   class="summary"
                   class:clickable={it.action === "pick"}
                   onclick={() => it.action === "pick" && (editing = it.c.oid)}
-                  title={it.action === "pick" ? "点击修改提交说明" : ""}
+                  title={it.action === "pick" ? t("点击修改提交说明") : ""}
                 >
                   {it.action === "pick" ? messageOf(it).split("\n")[0] : it.c.summary}
-                  {#if it.edited !== null}<span class="badge">已改说明</span>{/if}
-                  {#if (groups.get(it.c.oid)?.length ?? 0) > 0}<span class="badge">合并了 {groups.get(it.c.oid)!.length} 个</span>{/if}
-                  {#if it.c.parents > 1}<span class="badge warn">合并提交</span>{/if}
+                  {#if it.edited !== null}<span class="badge">{t("已改说明")}</span>{/if}
+                  {#if (groups.get(it.c.oid)?.length ?? 0) > 0}<span class="badge">{t("合并了 {0} 个", groups.get(it.c.oid)!.length)}</span>{/if}
+                  {#if it.c.parents > 1}<span class="badge warn">{t("合并提交")}</span>{/if}
                 </div>
                 <div class="meta">
                   <span class="mono">{it.c.oid.slice(0, 7)}</span>
                   <span>{it.c.author}</span>
                   <span>{relativeTime(it.c.time)}</span>
                   {#if it.action === "squash"}
-                    <span class="into">{target ? `→ 并入 ${target.c.oid.slice(0, 7)}` : "下面没有可以并入的提交"}</span>
+                    <span class="into">{target ? t("→ 并入 {0}", target.c.oid.slice(0, 7)) : t("下面没有可以并入的提交")}</span>
                   {/if}
                 </div>
               {/if}
             </div>
             <div class="move">
-              <button class="small" disabled={i === 0} onclick={() => move(i, -1)} title="上移">↑</button>
-              <button class="small" disabled={i === items.length - 1} onclick={() => move(i, 1)} title="下移">↓</button>
+              <button class="small" disabled={i === 0} onclick={() => move(i, -1)} title={t("上移")}>↑</button>
+              <button class="small" disabled={i === items.length - 1} onclick={() => move(i, 1)} title={t("下移")}>↓</button>
             </div>
           </div>
         {/each}
-        <div class="base">⟂ 起点：{from.slice(0, 7)} 的父提交（不会改变）</div>
+        <div class="base">{t("⟂ 起点：{0} 的父提交（不会改变）", from.slice(0, 7))}</div>
       </div>
     {/if}
 
     {#if problem && !loading && !error}<div class="problem">{problem}</div>{/if}
     <div class="buttons">
-      <button onclick={reset} disabled={!changed}>全部还原</button>
+      <button onclick={reset} disabled={!changed}>{t("全部还原")}</button>
       <span class="grow"></span>
-      <span class="count">{items.length} 个提交</span>
-      <button onclick={close}>取消</button>
-      <button class="primary" disabled={!!problem || !changed || running || loading} onclick={start}>开始变基</button>
+      <span class="count">{t("{0} 个提交", items.length)}</span>
+      <button onclick={close}>{t("取消")}</button>
+      <button class="primary" disabled={!!problem || !changed || running || loading} onclick={start}>{t("开始变基")}</button>
     </div>
   </div>
 </div>

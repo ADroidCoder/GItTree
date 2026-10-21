@@ -1,6 +1,7 @@
 //! 会修改仓库的操作都交给系统安装的 git 命令执行：
 //! 这样 hooks、GPG 签名、SSH 和凭据管理器都和命令行里的行为完全一致。
 
+use crate::tr;
 use crate::log::Error;
 use serde::Serialize;
 use std::cell::RefCell;
@@ -80,7 +81,7 @@ fn git_full(dir: &Path, args: &[&str], input: Option<&[u8]>, envs: &[(&str, &str
     if input.is_some() {
         c.stdin(Stdio::piped());
     }
-    let mut child = c.spawn().map_err(|e| format!("无法运行 git，请确认已安装 Git 并加入 PATH：{e}"))?;
+    let mut child = c.spawn().map_err(|e| tr!("无法运行 git，请确认已安装 Git 并加入 PATH：{e}", "Couldn't run git. Make sure Git is installed and on PATH: {e}"))?;
     if let Some(data) = input {
         child.stdin.take().unwrap().write_all(data)?;
     }
@@ -96,11 +97,11 @@ fn git_full(dir: &Path, args: &[&str], input: Option<&[u8]>, envs: &[(&str, &str
     if status.success() {
         Ok(stdout)
     } else if progress_cancelled() {
-        Err("已取消".into())
+        Err(tr!("已取消", "Cancelled").into())
     } else {
         let stderr = String::from_utf8_lossy(&stderr);
         let msg = if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() };
-        Err(format!("git {} 失败：\n{}", args.first().unwrap_or(&""), msg).into())
+        Err(tr!("git {} 失败：\n{}", "git {} failed:\n{}", args.first().unwrap_or(&""), msg).into())
     }
 }
 
@@ -181,7 +182,7 @@ fn run_streaming(
     if p.cancelled.load(Ordering::SeqCst) {
         let _ = child.kill();
         let _ = child.wait();
-        return Err("已取消".into());
+        return Err(tr!("已取消", "Cancelled").into());
     }
     *p.pid.lock().unwrap() = Some(child.id());
     p.emit(format!("$ git {}", args.join(" ")));
@@ -430,7 +431,7 @@ pub fn delete_branch(dir: &Path, name: &str, force: bool) -> Result<(), Error> {
 
 /// 删除远程分支，例如 origin/feature
 pub fn delete_remote_branch(dir: &Path, remote_branch: &str) -> Result<(), Error> {
-    let (remote, branch) = remote_branch.split_once('/').ok_or("远程分支名称格式不对")?;
+    let (remote, branch) = remote_branch.split_once('/').ok_or_else(|| tr!("远程分支名称格式不对", "Invalid remote branch name"))?;
     git(dir, &["push", remote, "--delete", branch])?;
     Ok(())
 }
@@ -446,7 +447,7 @@ pub fn rebase(dir: &Path, onto: &str) -> Result<String, Error> {
 /// 中止或继续正在进行的 merge / rebase / cherry-pick / revert
 pub fn sequencer(dir: &Path, op: &str, action: &str) -> Result<String, Error> {
     if !matches!(op, "merge" | "rebase" | "cherry-pick" | "revert") || !matches!(action, "abort" | "continue") {
-        return Err("不支持的操作".into());
+        return Err(tr!("不支持的操作", "Unsupported operation").into());
     }
     let flag = format!("--{action}");
     git(dir, &[op, &flag])
@@ -462,7 +463,7 @@ pub fn revert(dir: &Path, oid: &str) -> Result<String, Error> {
 
 pub fn reset(dir: &Path, oid: &str, mode: &str) -> Result<(), Error> {
     if !matches!(mode, "soft" | "mixed" | "hard") {
-        return Err("不支持的重置模式".into());
+        return Err(tr!("不支持的重置模式", "Unsupported reset mode").into());
     }
     git(dir, &["reset", &format!("--{mode}"), oid])?;
     Ok(())
@@ -489,7 +490,7 @@ pub fn fetch(dir: &Path) -> Result<String, Error> {
 pub fn clone(parent: &Path, url: &str, name: &str) -> Result<std::path::PathBuf, Error> {
     let target = parent.join(name);
     if target.exists() && std::fs::read_dir(&target).map(|mut d| d.next().is_some()).unwrap_or(true) {
-        return Err(format!("{} 已经存在并且不是空文件夹", target.display()).into());
+        return Err(tr!("{} 已经存在并且不是空文件夹", "{} already exists and isn't an empty folder", target.display()).into());
     }
     std::fs::create_dir_all(parent)?;
     git(parent, &["clone", "--progress", url, name])?;
@@ -530,7 +531,7 @@ pub fn push(dir: &Path, force: bool) -> Result<String, Error> {
         let remotes = git(dir, &["remote"])?;
         let remote = remotes.lines().find(|r| *r == "origin").or_else(|| remotes.lines().next());
         let Some(remote) = remote else {
-            return Err("这个仓库还没有配置远程仓库".into());
+            return Err(tr!("这个仓库还没有配置远程仓库", "This repository has no remotes").into());
         };
         args.extend(["-u", remote, "HEAD"]);
         return git(dir, &args);
@@ -579,7 +580,7 @@ pub fn stash_push(dir: &Path, message: Option<&str>, paths: &[String]) -> Result
 
 pub fn stash_action(dir: &Path, action: &str, index: u32) -> Result<(), Error> {
     if !matches!(action, "pop" | "apply" | "drop") {
-        return Err("不支持的 stash 操作".into());
+        return Err(tr!("不支持的 stash 操作", "Unsupported stash operation").into());
     }
     git(dir, &["stash", action, &format!("stash@{{{index}}}")])?;
     Ok(())

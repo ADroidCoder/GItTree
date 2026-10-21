@@ -1,5 +1,6 @@
 mod askpass;
 
+use gittree_core::tr;
 use gittree_core::gix::{self, ObjectId};
 use gittree_core::log::{self, Error, HeadInfo, Log, RefInfo, Timings};
 use gittree_core::flow::{self, FinishOptions, FlowConfig};
@@ -44,8 +45,8 @@ struct AppState {
 
 impl AppState {
     fn get(&self, repo: &str) -> Result<SessionRef, Error> {
-        let map = self.sessions.lock().map_err(|_| "内部状态错误")?;
-        map.get(repo).cloned().ok_or_else(|| "仓库没有打开或已经关闭".into())
+        let map = self.sessions.lock().map_err(|_| tr!("内部状态错误", "Internal state error"))?;
+        map.get(repo).cloned().ok_or_else(|| tr!("仓库没有打开或已经关闭", "The repository isn't open").into())
     }
 
     fn next_generation(&self) -> u64 {
@@ -64,7 +65,7 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, Error> + Send
 }
 
 fn lock(s: &SessionRef) -> Result<std::sync::MutexGuard<'_, Session>, Error> {
-    s.lock().map_err(|_| "内部状态错误".into())
+    s.lock().map_err(|_| tr!("内部状态错误", "Internal state error").into())
 }
 
 #[derive(Serialize)]
@@ -185,12 +186,18 @@ fn dunce(p: PathBuf) -> PathBuf {
 }
 
 /// 打开仓库。path 可以是仓库里的任意子目录；同一个仓库重复打开会重新加载。
+/// 界面语言，决定后端提示信息用中文还是英文
+#[tauri::command]
+fn set_lang(en: bool) {
+    gittree_core::set_english(en);
+}
+
 #[tauri::command]
 async fn open_repo(app: AppHandle, state: State<'_, AppState>, path: String) -> CmdResult<RepoInfo> {
     let generation = state.next_generation();
     let (session, info) = blocking(move || {
-        let repo = gix::discover(&path).map_err(|e| format!("不是 Git 仓库：{e}"))?;
-        let workdir = dunce(repo.workdir().ok_or("暂不支持裸仓库")?.to_path_buf());
+        let repo = gix::discover(&path).map_err(|e| tr!("不是 Git 仓库：{e}", "Not a Git repository: {e}"))?;
+        let workdir = dunce(repo.workdir().ok_or_else(|| tr!("暂不支持裸仓库", "Bare repositories aren't supported yet"))?.to_path_buf());
         let git_dir = dunce(repo.git_dir().to_path_buf());
         let mut repo = repo;
         repo.object_cache_size_if_unset(32 * 1024 * 1024);
@@ -206,7 +213,7 @@ async fn open_repo(app: AppHandle, state: State<'_, AppState>, path: String) -> 
     state
         .sessions
         .lock()
-        .map_err(|_| "内部状态错误")?
+        .map_err(|_| tr!("内部状态错误", "Internal state error"))?
         .insert(info.path.clone(), session.clone());
     spawn_meta_loader(session, generation);
     Ok(info)
@@ -354,7 +361,7 @@ async fn row_of(state: State<'_, AppState>, repo: String, oid: String) -> CmdRes
 
 fn dirs_of(state: &AppState, repo: &str) -> CmdResult<(PathBuf, PathBuf)> {
     let session = state.get(repo).map_err(|e| e.to_string())?;
-    let s = session.lock().map_err(|_| "内部状态错误".to_string())?;
+    let s = session.lock().map_err(|_| tr!("内部状态错误", "Internal state error"))?;
     Ok((s.workdir.clone(), s.git_dir.clone()))
 }
 
@@ -468,26 +475,34 @@ impl Op {
         Some(match self {
             Op::Commit { message, amend } => {
                 let first = message.lines().next().unwrap_or("").trim();
-                (format!("{} “{first}”", if *amend { "修改提交" } else { "提交" }), Soft)
+                (
+                    match (amend, gittree_core::english()) {
+                        (true, true) => format!("amend “{first}”"),
+                        (false, true) => format!("commit “{first}”"),
+                        (true, false) => format!("修改提交 “{first}”"),
+                        (false, false) => format!("提交 “{first}”"),
+                    },
+                    Soft,
+                )
             }
-            Op::Checkout { name } => (format!("切换到 {name}"), Keep),
-            Op::CheckoutRemote { local, .. } => (format!("检出 {local}"), Keep),
-            Op::CheckoutDetached { oid } => (format!("检出提交 {}", &oid[..oid.len().min(7)]), Keep),
-            Op::CreateBranch { name, .. } => (format!("新建分支 {name}"), Keep),
-            Op::DeleteBranch { name, .. } => (format!("删除分支 {name}"), Keep),
-            Op::Merge { target } => (format!("合并 {target}"), Keep),
-            Op::Rebase { onto } => (format!("变基到 {onto}"), Keep),
-            Op::CherryPick { oid } => (format!("拣选 {}", &oid[..oid.len().min(7)]), Keep),
-            Op::Revert { oid } => (format!("还原 {}", &oid[..oid.len().min(7)]), Keep),
-            Op::Reset { oid, mode } => (format!("重置到 {}（{mode}）", &oid[..oid.len().min(7)]), Keep),
-            Op::CreateTag { name, .. } => (format!("新建标签 {name}"), Keep),
-            Op::DeleteTag { name } => (format!("删除标签 {name}"), Keep),
-            Op::Pull => ("拉取".into(), Keep),
-            Op::FlowStart { kind, name, .. } => (format!("开始 {kind:?} {name}"), Keep),
-            Op::FlowFinish { kind, name, .. } => (format!("完成 {kind:?} {name}"), Keep),
-            Op::MergeInto { branch, source } => (format!("把 {source} 合并到 {branch}"), Keep),
-            Op::RebaseBranch { branch, onto } => (format!("把 {branch} 变基到 {onto}"), Keep),
-            Op::RebaseInteractive { steps, .. } => (format!("交互式变基（{} 个提交）", steps.len()), Keep),
+            Op::Checkout { name } => (tr!("切换到 {name}", "checkout {name}"), Keep),
+            Op::CheckoutRemote { local, .. } => (tr!("检出 {local}", "checkout {local}"), Keep),
+            Op::CheckoutDetached { oid } => (tr!("检出提交 {}", "checkout {}", &oid[..oid.len().min(7)]), Keep),
+            Op::CreateBranch { name, .. } => (tr!("新建分支 {name}", "create branch {name}"), Keep),
+            Op::DeleteBranch { name, .. } => (tr!("删除分支 {name}", "delete branch {name}"), Keep),
+            Op::Merge { target } => (tr!("合并 {target}", "merge {target}"), Keep),
+            Op::Rebase { onto } => (tr!("变基到 {onto}", "rebase onto {onto}"), Keep),
+            Op::CherryPick { oid } => (tr!("拣选 {}", "cherry-pick {}", &oid[..oid.len().min(7)]), Keep),
+            Op::Revert { oid } => (tr!("还原 {}", "revert {}", &oid[..oid.len().min(7)]), Keep),
+            Op::Reset { oid, mode } => (tr!("重置到 {}（{mode}）", "reset to {} ({mode})", &oid[..oid.len().min(7)]), Keep),
+            Op::CreateTag { name, .. } => (tr!("新建标签 {name}", "create tag {name}"), Keep),
+            Op::DeleteTag { name } => (tr!("删除标签 {name}", "delete tag {name}"), Keep),
+            Op::Pull => (tr!("拉取", "pull"), Keep),
+            Op::FlowStart { kind, name, .. } => (tr!("开始 {kind:?} {name}", "start {kind:?} {name}"), Keep),
+            Op::FlowFinish { kind, name, .. } => (tr!("完成 {kind:?} {name}", "finish {kind:?} {name}"), Keep),
+            Op::MergeInto { branch, source } => (tr!("把 {source} 合并到 {branch}", "merge {source} into {branch}"), Keep),
+            Op::RebaseBranch { branch, onto } => (tr!("把 {branch} 变基到 {onto}", "rebase {branch} onto {onto}"), Keep),
+            Op::RebaseInteractive { steps, .. } => (tr!("交互式变基（{} 个提交）", "interactive rebase ({} commits)", steps.len()), Keep),
             _ => return None,
         })
     }
@@ -495,7 +510,7 @@ impl Op {
 
 fn hunk(dir: &Path, path: &str, header: &str, staged: bool) -> Result<Vec<u8>, Error> {
     diff::hunk_patch(&git2::Repository::open(dir)?, path, staged, header)?
-        .ok_or_else(|| "这个代码块已经变化了，请刷新后重试".into())
+        .ok_or_else(|| tr!("这个代码块已经变化了，请刷新后重试", "This hunk has changed. Refresh and try again").into())
 }
 
 #[derive(Clone, Serialize)]
@@ -605,7 +620,7 @@ async fn open_in(state: State<'_, AppState>, repo: String, target: String, path:
                 use std::os::windows::process::CommandExt;
                 c.creation_flags(0x0800_0000);
             }
-            c.spawn().map_err(|e| format!("无法运行 {cmd}：{e}"))?;
+            c.spawn().map_err(|e| tr!("无法运行 {cmd}：{e}", "Couldn't run {cmd}: {e}"))?;
             Ok(())
         };
         let d = dir.as_os_str();
@@ -643,7 +658,7 @@ async fn open_in(state: State<'_, AppState>, repo: String, target: String, path:
                             .creation_flags(CREATE_NEW_CONSOLE)
                             .spawn()
                             .map(|_| ())
-                            .map_err(|e| Error::from(format!("无法打开终端：{e}")))
+                            .map_err(|e| Error::from(tr!("无法打开终端：{e}", "Couldn't open a terminal: {e}")))
                     });
                 #[cfg(all(unix, not(target_os = "macos")))]
                 return spawn("x-terminal-emulator", &[]);
@@ -665,7 +680,7 @@ async fn open_in(state: State<'_, AppState>, repo: String, target: String, path:
                     r
                 }
             }
-            _ => Err("不支持的打开方式".into()),
+            _ => Err(tr!("不支持的打开方式", "Unsupported target").into()),
         }
     })
     .await
@@ -678,13 +693,13 @@ async fn undo_last(state: State<'_, AppState>, repo: String) -> CmdResult<String
     blocking(move || {
         let (dir, git_dir, entry) = {
             let s = lock(&session)?;
-            let e = s.undo.last().cloned().ok_or("没有可以撤销的操作")?;
+            let e = s.undo.last().cloned().ok_or_else(|| tr!("没有可以撤销的操作", "Nothing to undo"))?;
             (s.workdir.clone(), s.git_dir.clone(), e)
         };
         // 之后又在别处改过仓库：这条和更早的记录都不再可靠，全部丢掉
         if !entry.is_current(&dir)? {
             lock(&session)?.undo.clear();
-            return Err(format!("无法撤销“{}”：在那之后仓库又有了变化（可能是在命令行或其他工具里操作的）", entry.label).into());
+            return Err(tr!("无法撤销“{}”：在那之后仓库又有了变化（可能是在命令行或其他工具里操作的）", "Can't undo “{}”: the repository has changed since then (perhaps from the command line or another tool)", entry.label).into());
         }
         let msg = undo::undo(&dir, &git_dir, &entry)?;
         lock(&session)?.undo.pop();
@@ -822,12 +837,15 @@ pub fn run() {
     fix_path();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             ops::set_extra_env(askpass::start(app.handle().clone()));
             Ok(())
         })
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
+            set_lang,
             open_repo,
             close_repo,
             refresh_repo,

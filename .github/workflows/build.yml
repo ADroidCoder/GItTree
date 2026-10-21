@@ -49,16 +49,25 @@ jobs:
             files: |
               target/release/bundle/msi/*.msi
               target/release/bundle/nsis/*.exe
+              target/release/bundle/nsis/*.exe.sig
           - name: macOS (Apple 芯片)
             os: macos-latest
+            arch: aarch64
             files: |
               target/release/bundle/dmg/*.dmg
+              target/release/bundle/macos/*.app.tar.gz*
           - name: macOS (Intel)
             os: macos-latest
             target: x86_64-apple-darwin
+            arch: x64
             files: |
               target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+              target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz*
     runs-on: ${{ matrix.os }}
+    env:
+      # 自动更新包的签名私钥，在仓库 Settings → Secrets and variables → Actions 里配置；没配置时只打普通安装包
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -72,7 +81,22 @@ jobs:
         with:
           key: ${{ matrix.target }}
       - run: npm ci
-      - run: npx tauri build ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+      - name: 打包
+        shell: bash
+        run: |
+          args=()
+          [ -n "${{ matrix.target }}" ] && args+=(--target "${{ matrix.target }}")
+          [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && args+=(--config src-tauri/tauri.updater.conf.json)
+          npx tauri build "${args[@]}"
+      - name: 更新包按架构改名
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          dir="target/${{ matrix.target }}/release/bundle/macos"
+          if [ -f "$dir/GitTree.app.tar.gz" ]; then
+            mv "$dir/GitTree.app.tar.gz" "$dir/GitTree_${{ matrix.arch }}.app.tar.gz"
+            mv "$dir/GitTree.app.tar.gz.sig" "$dir/GitTree_${{ matrix.arch }}.app.tar.gz.sig"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: GitTree-${{ matrix.name }}
@@ -86,10 +110,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      - name: 生成自动更新用的 latest.json
+        run: |
+          prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          git log --no-merges --format='- %s' ${prev:+$prev..}"$GITHUB_REF_NAME" \
+            | python3 .github/scripts/latest_json.py dist "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" > latest.json \
+            && mv latest.json dist/ || rm -f latest.json
       - run: ls -la dist
       - uses: softprops/action-gh-release@v2
         with:

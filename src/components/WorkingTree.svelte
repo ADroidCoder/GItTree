@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { api, type StatusEntry } from "../lib/api";
   import { confirm, dialog, errorText, openIn, toast, type RepoTab } from "../lib/store.svelte";
   import { isMac } from "../lib/util";
@@ -77,13 +78,13 @@
 
   async function stashFiles(files: FileItem[]) {
     const r = await dialog({
-      title: "Stash 选中的文件",
-      message: files.length === 1 ? files[0].path : `${files.length} 个文件，其他改动保留在工作区`,
-      input: { placeholder: "说明（可选）", value: "" },
+      title: t("Stash 选中的文件"),
+      message: files.length === 1 ? files[0].path : t("{0} 个文件，其他改动保留在工作区", files.length),
+      input: { placeholder: t("说明（可选）"), value: "" },
       confirmText: "Stash",
     });
     if (!r) return;
-    if (await tab.run({ op: "stash_push", message: r.input || null, paths: files.map((f) => f.path) }, "正在 stash…")) clearSel();
+    if (await tab.run({ op: "stash_push", message: r.input || null, paths: files.map((f) => f.path) }, t("正在 stash…"))) clearSel();
   }
 
   async function stageFiles(files: FileItem[]) {
@@ -103,17 +104,17 @@
       sel = { section: sec, keys: new Set([f.key]), anchor: f.key };
       files = [f];
     }
-    const n = files.length > 1 ? ` ${files.length} 个文件` : "";
+    const n = files.length > 1 ? t(" {0} 个文件", files.length) : "";
     const items: MenuItem[] =
       sec === "unstaged"
         ? [
-            { label: `暂存${n}`, action: () => stageFiles(files) },
+            { label: t("暂存{0}", n), action: () => stageFiles(files) },
             { label: `Stash${n}…`, action: () => stashFiles(files) },
             "sep",
-            { label: `丢弃${n}的改动…`, danger: true, action: () => discard(files) },
+            { label: t("丢弃{0}的改动…", n), danger: true, action: () => discard(files) },
           ]
         : [
-            { label: `取消暂存${n}`, action: () => unstageFiles(files) },
+            { label: t("取消暂存{0}", n), action: () => unstageFiles(files) },
             { label: `Stash${n}…`, action: () => stashFiles(files) },
           ];
     if (files.length === 1) {
@@ -121,15 +122,15 @@
       if (files[0].status !== "D")
         items.push(
           "sep",
-          { label: "用编辑器打开", action: () => openIn(tab, "editor", p) },
-          { label: isMac ? "在访达中显示" : "在资源管理器中显示", action: () => openIn(tab, "folder", p) },
+          { label: t("用编辑器打开"), action: () => openIn(tab, "editor", p) },
+          { label: isMac ? t("在访达中显示") : t("在资源管理器中显示"), action: () => openIn(tab, "folder", p) },
         );
       if (files[0].status !== "?")
-        items.push("sep", { label: "文件历史", action: () => tab.openFile(p, "history") }, { label: "Blame", action: () => tab.openFile(p, "blame") });
+        items.push("sep", { label: t("文件历史"), action: () => tab.openFile(p, "history") }, { label: "Blame", action: () => tab.openFile(p, "blame") });
     }
     items.push("sep", {
-      label: "复制路径",
-      action: () => navigator.clipboard.writeText(files.map((x) => x.path).join("\n")).then(() => toast("已复制")),
+      label: t("复制路径"),
+      action: () => navigator.clipboard.writeText(files.map((x) => x.path).join("\n")).then(() => toast(t("已复制"))),
     });
     menu = { x: e.clientX, y: e.clientY, items };
   }
@@ -140,22 +141,22 @@
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "打开冲突解决…", action: () => (tab.diff = { source: "conflict", path: p, oldPath: null }) },
+        { label: t("打开冲突解决…"), action: () => (tab.diff = { source: "conflict", path: p, oldPath: null }) },
         "sep",
-        { label: "整个文件用当前的版本", action: () => tab.run({ op: "resolve_side", path: p, theirs: false }, "正在解决冲突…") },
-        { label: "整个文件用传入的版本", action: () => tab.run({ op: "resolve_side", path: p, theirs: true }, "正在解决冲突…") },
-        { label: "按现在的内容标记为已解决", action: () => tab.run({ op: "stage", paths: [p] }) },
+        { label: t("整个文件用当前的版本"), action: () => tab.run({ op: "resolve_side", path: p, theirs: false }, t("正在解决冲突…")) },
+        { label: t("整个文件用传入的版本"), action: () => tab.run({ op: "resolve_side", path: p, theirs: true }, t("正在解决冲突…")) },
+        { label: t("按现在的内容标记为已解决"), action: () => tab.run({ op: "stage", paths: [p] }) },
         "sep",
-        { label: "用编辑器打开", action: () => openIn(tab, "editor", p) },
-        { label: "文件历史", action: () => tab.openFile(p, "history") },
-        { label: "复制路径", action: () => navigator.clipboard.writeText(p).then(() => toast("已复制")) },
+        { label: t("用编辑器打开"), action: () => openIn(tab, "editor", p) },
+        { label: t("文件历史"), action: () => tab.openFile(p, "history") },
+        { label: t("复制路径"), action: () => navigator.clipboard.writeText(p).then(() => toast(t("已复制"))) },
       ],
     };
   }
 
   async function discard(paths: FileItem[]) {
-    const names = paths.length === 1 ? paths[0].path : `${paths.length} 个文件`;
-    if (!(await confirm("丢弃改动", `确定丢弃 ${names} 的改动吗？未跟踪的文件会被删除，此操作无法撤销。`, "丢弃", true)))
+    const names = paths.length === 1 ? paths[0].path : t("{0} 个文件", paths.length);
+    if (!(await confirm(t("丢弃改动"), t("确定丢弃 {0} 的改动吗？未跟踪的文件会被删除，此操作无法撤销。", names), t("丢弃"), true)))
       return;
     await tab.run({
       op: "discard",
@@ -179,11 +180,11 @@
   }
 
   async function commit() {
-    if (!summary.trim()) return toast("请填写提交说明", "error");
-    if (!amend && staged.length === 0) return toast("没有已暂存的改动，请先暂存要提交的文件", "error");
+    if (!summary.trim()) return toast(t("请填写提交说明"), "error");
+    if (!amend && staged.length === 0) return toast(t("没有已暂存的改动，请先暂存要提交的文件"), "error");
     committing = true;
     const message = description.trim() ? `${summary.trim()}\n\n${description.trim()}\n` : `${summary.trim()}\n`;
-    const ok = await tab.run({ op: "commit", message, amend }, "正在提交…");
+    const ok = await tab.run({ op: "commit", message, amend }, t("正在提交…"));
     committing = false;
     if (ok) {
       summary = "";
@@ -206,22 +207,22 @@
 <div class="wt">
   {#if st?.in_progress}
     <div class="progress">
-      <div>正在进行 <b>{st.in_progress}</b>{st.conflicted.length ? `，还有 ${st.conflicted.length} 个冲突文件` : ""}</div>
+      <div>{t("正在进行")} <b>{st.in_progress}</b>{st.conflicted.length ? t("，还有 {0} 个冲突文件", st.conflicted.length) : ""}</div>
       <div class="pbtns">
-        <button onclick={() => tab.run({ op: "sequencer", kind: st!.in_progress!, action: "continue" }, "继续中…")}>继续</button>
-        <button class="danger" onclick={() => tab.run({ op: "sequencer", kind: st!.in_progress!, action: "abort" }, "中止中…")}>中止</button>
+        <button onclick={() => tab.run({ op: "sequencer", kind: st!.in_progress!, action: "continue" }, t("继续中…"))}>{t("继续")}</button>
+        <button class="danger" onclick={() => tab.run({ op: "sequencer", kind: st!.in_progress!, action: "abort" }, t("中止中…"))}>{t("中止")}</button>
       </div>
     </div>
   {/if}
 
   <div class="lists">
     <div class="toolbar">
-      <span class="tip">{isMac ? "⌘" : "Ctrl"} / Shift + 点击可多选，右键查看更多操作</span>
-      <button class="view-toggle" onclick={() => (treeView = !treeView)}>{treeView ? "列表" : "目录树"}</button>
+      <span class="tip">{t("{0} / Shift + 点击可多选，右键查看更多操作", isMac ? "⌘" : "Ctrl")}</span>
+      <button class="view-toggle" onclick={() => (treeView = !treeView)}>{treeView ? t("列表") : t("目录树")}</button>
     </div>
     {#if conflicted.length}
       <div class="sec-head conflict">
-        <span>冲突 ({conflicted.length})</span>
+        <span>{t("冲突 ({0})", conflicted.length)}</span>
       </div>
       <FileList
         files={conflicted}
@@ -231,22 +232,22 @@
         onContext={conflictMenu}
       >
         {#snippet actions(f)}
-          <button onclick={(e) => { e.stopPropagation(); tab.diff = { source: "conflict", path: f.path, oldPath: null }; }} title="打开冲突解决界面">解决</button>
+          <button onclick={(e) => { e.stopPropagation(); tab.diff = { source: "conflict", path: f.path, oldPath: null }; }} title={t("打开冲突解决界面")}>{t("解决")}</button>
         {/snippet}
       </FileList>
     {/if}
 
     <div class="sec-head">
-      <span>未暂存 ({unstaged.length})</span>
+      <span>{t("未暂存 ({0})", unstaged.length)}</span>
       <span class="sec-acts">
         {#if sel.section === "unstaged" && selected.length > 1}
-          <span class="sel-count">已选 {selected.length}</span>
-          <button class="danger" onclick={() => discard(selected)}>丢弃</button>
+          <span class="sel-count">{t("已选 {0}", selected.length)}</span>
+          <button class="danger" onclick={() => discard(selected)}>{t("丢弃")}</button>
           <button onclick={() => stashFiles(selected)}>Stash</button>
-          <button onclick={() => stageFiles(selected)}>暂存所选</button>
+          <button onclick={() => stageFiles(selected)}>{t("暂存所选")}</button>
         {:else if unstaged.length}
-          <button class="danger" onclick={() => discard(unstaged)}>全部丢弃</button>
-          <button onclick={() => tab.run({ op: "stage_all" })}>全部暂存</button>
+          <button class="danger" onclick={() => discard(unstaged)}>{t("全部丢弃")}</button>
+          <button onclick={() => tab.run({ op: "stage_all" })}>{t("全部暂存")}</button>
         {/if}
       </span>
     </div>
@@ -260,20 +261,20 @@
       onContext={(e, f) => onContext("unstaged", e, f)}
     >
       {#snippet actions(f)}
-        <button class="danger" onclick={(e) => { e.stopPropagation(); discard([f]); }} title="丢弃改动">丢弃</button>
-        <button onclick={(e) => { e.stopPropagation(); tab.run({ op: "stage", paths: [f.path] }); }} title="暂存">暂存</button>
+        <button class="danger" onclick={(e) => { e.stopPropagation(); discard([f]); }} title={t("丢弃改动")}>{t("丢弃")}</button>
+        <button onclick={(e) => { e.stopPropagation(); tab.run({ op: "stage", paths: [f.path] }); }} title={t("暂存")}>{t("暂存")}</button>
       {/snippet}
     </FileList>
 
     <div class="sec-head">
-      <span>已暂存 ({staged.length})</span>
+      <span>{t("已暂存 ({0})", staged.length)}</span>
       <span class="sec-acts">
         {#if sel.section === "staged" && selected.length > 1}
-          <span class="sel-count">已选 {selected.length}</span>
+          <span class="sel-count">{t("已选 {0}", selected.length)}</span>
           <button onclick={() => stashFiles(selected)}>Stash</button>
-          <button onclick={() => unstageFiles(selected)}>取消暂存所选</button>
+          <button onclick={() => unstageFiles(selected)}>{t("取消暂存所选")}</button>
         {:else if staged.length}
-          <button onclick={() => tab.run({ op: "unstage_all" })}>全部取消暂存</button>
+          <button onclick={() => tab.run({ op: "unstage_all" })}>{t("全部取消暂存")}</button>
         {/if}
       </span>
     </div>
@@ -287,22 +288,22 @@
       onContext={(e, f) => onContext("staged", e, f)}
     >
       {#snippet actions(f)}
-        <button onclick={(e) => { e.stopPropagation(); tab.run({ op: "unstage", paths: [f.path] }); }} title="取消暂存">取消暂存</button>
+        <button onclick={(e) => { e.stopPropagation(); tab.run({ op: "unstage", paths: [f.path] }); }} title={t("取消暂存")}>{t("取消暂存")}</button>
       {/snippet}
     </FileList>
   </div>
 
   <div class="commit-box">
-    <input class="summary" placeholder="提交说明（必填）" bind:value={summary} onkeydown={onKey} maxlength="200" />
-    <textarea placeholder="详细描述（可选）" bind:value={description} onkeydown={onKey} rows="4"></textarea>
+    <input class="summary" placeholder={t("提交说明（必填）")} bind:value={summary} onkeydown={onKey} maxlength="200" />
+    <textarea placeholder={t("详细描述（可选）")} bind:value={description} onkeydown={onKey} rows="4"></textarea>
     <div class="commit-row">
       <label class="amend">
         <input type="checkbox" checked={amend} onchange={toggleAmend} />
-        修改上一次提交
+        {t("修改上一次提交")}
       </label>
       <span class="count">{summary.length > 72 ? `${summary.length}/72` : ""}</span>
       <button class="primary" disabled={committing} onclick={commit} title={isMac ? "⌘ + Enter" : "Ctrl + Enter"}>
-        {amend ? "修改提交" : staged.length ? `提交 ${staged.length} 个文件` : "提交"}
+        {amend ? t("修改提交") : staged.length ? t("提交 {0} 个文件", staged.length) : t("提交")}
       </button>
     </div>
   </div>

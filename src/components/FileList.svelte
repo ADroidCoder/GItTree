@@ -1,4 +1,5 @@
 <script lang="ts" module>
+  import { t } from "../lib/i18n";
   export interface FileItem {
     key: string;
     path: string;
@@ -96,14 +97,14 @@
   }
 
   const statusTitle: Record<string, string> = {
-    A: "新增",
-    M: "修改",
-    D: "删除",
-    R: "重命名",
-    C: "复制",
-    T: "类型变化",
-    U: "冲突",
-    "?": "未跟踪",
+    A: t("新增"),
+    M: t("修改"),
+    D: t("删除"),
+    R: t("重命名"),
+    C: t("复制"),
+    T: t("类型变化"),
+    U: t("冲突"),
+    "?": t("未跟踪"),
   };
 </script>
 
@@ -130,7 +131,7 @@
     {#if showDir && sp.dir}<span class="fdir">{sp.dir}</span>{/if}
     <span class="grow"></span>
     {#if f.binary}
-      <span class="bin">二进制</span>
+      <span class="bin">{t("二进制")}</span>
     {:else if f.additions !== undefined}
       {#if f.additions}<span class="add">+{f.additions}</span>{/if}
       {#if f.deletions}<span class="del">-{f.deletions}</span>{/if}
@@ -165,7 +166,7 @@
     {/each}
   {/if}
   {#if files.length > limit}
-    <button class="more" onclick={() => (limit += PAGE)}>还有 {files.length - limit} 个文件，点击显示更多</button>
+    <button class="more" onclick={() => (limit += PAGE)}>{t("还有 {0} 个文件，点击显示更多", files.length - limit)}</button>
   {/if}
 </div>
 

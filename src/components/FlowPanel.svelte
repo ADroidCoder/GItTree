@@ -1,14 +1,15 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import type { FlowKind, RefInfo } from "../lib/api";
   import { openFlow, type RepoTab } from "../lib/store.svelte";
 
   let { tab, x, y, onClose }: { tab: RepoTab; x: number; y: number; onClose: () => void } = $props();
 
   const KINDS: { kind: FlowKind; label: string; desc: string }[] = [
-    { kind: "feature", label: "Feature", desc: "新功能" },
-    { kind: "bugfix", label: "Bugfix", desc: "开发中的问题修复" },
-    { kind: "release", label: "Release", desc: "发布新版本" },
-    { kind: "hotfix", label: "Hotfix", desc: "线上紧急修复" },
+    { kind: "feature", label: "Feature", desc: t("新功能") },
+    { kind: "bugfix", label: "Bugfix", desc: t("开发中的问题修复") },
+    { kind: "release", label: "Release", desc: t("发布新版本") },
+    { kind: "hotfix", label: "Hotfix", desc: t("线上紧急修复") },
   ];
 
   const current = $derived(tab.flowBranch(tab.repo?.head.branch));
@@ -32,8 +33,8 @@
   const start = (kind: FlowKind) => act(() => openFlow({ tab, mode: "start", kind }));
   const finish = (kind: FlowKind, name: string) => act(() => openFlow({ tab, mode: "finish", kind, name }));
   const publish = (kind: FlowKind, name: string) =>
-    act(() => tab.run({ op: "flow_publish", kind, name }, "正在推送…"));
-  const checkout = (r: RefInfo) => act(() => tab.run({ op: "checkout", name: r.name }, `正在切换到 ${r.name}…`));
+    act(() => tab.run({ op: "flow_publish", kind, name }, t("正在推送…")));
+  const checkout = (r: RefInfo) => act(() => tab.run({ op: "checkout", name: r.name }, t("正在切换到 {0}…", r.name)));
   const settings = () => act(() => openFlow({ tab, mode: "init" }));
 
   let el = $state<HTMLDivElement>();
@@ -49,29 +50,29 @@
   <div class="top">
     <span class="title">Git Flow</span>
     <span class="cfg">{tab.flow?.develop} → {tab.flow?.master}</span>
-    <button class="link" onclick={settings}>设置</button>
+    <button class="link" onclick={settings}>{t("设置")}</button>
   </div>
 
   {#if current && tab.repo?.head.branch}
     {@const c = current}
     <div class="current">
-      <div class="cur-label">当前分支</div>
+      <div class="cur-label">{t("当前分支")}</div>
       <div class="cur-row">
         <span class="kind k-{c.kind}">{c.kind}</span>
         <span class="bname">{tab.repo.head.branch}</span>
         <span class="grow"></span>
-        <button class="small" onclick={() => publish(c.kind, c.name)}>推送</button>
-        <button class="small primary" onclick={() => finish(c.kind, c.name)}>完成</button>
+        <button class="small" onclick={() => publish(c.kind, c.name)}>{t("推送")}</button>
+        <button class="small primary" onclick={() => finish(c.kind, c.name)}>{t("完成")}</button>
       </div>
     </div>
   {/if}
 
   <div class="start">
     {#each KINDS as k (k.kind)}
-      <button class="start-btn" onclick={() => start(k.kind)} title="开始一个新的 {k.label}（{k.desc}）">
+      <button class="start-btn" onclick={() => start(k.kind)} title={t("开始一个新的 {0}（{1}）", k.label, k.desc)}>
         <span class="plus">＋</span>
         <span>
-          <span class="sname">开始 {k.label}</span>
+          <span class="sname">{t("开始 {0}", k.label)}</span>
           <span class="sdesc">{k.desc}</span>
         </span>
       </button>
@@ -80,7 +81,7 @@
 
   <div class="list">
     {#if total === 0}
-      <div class="empty">还没有进行中的 feature / release / hotfix 分支</div>
+      <div class="empty">{t("还没有进行中的 feature / release / hotfix 分支")}</div>
     {/if}
     {#each groups as g (g.kind)}
       {#if g.branches.length}
@@ -90,11 +91,11 @@
             <span class="mark">{b.ref.is_head ? "✓" : ""}</span>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <span class="bname" ondblclick={() => !b.ref.is_head && checkout(b.ref)} title="{b.ref.name}（双击切换）">{b.name}</span>
+            <span class="bname" ondblclick={() => !b.ref.is_head && checkout(b.ref)} title={t("{0}（双击切换）", b.ref.name)}>{b.name}</span>
             <span class="acts">
-              {#if !b.ref.is_head}<button class="small" onclick={() => checkout(b.ref)}>切换</button>{/if}
-              <button class="small" onclick={() => publish(g.kind, b.name)}>推送</button>
-              <button class="small primary" onclick={() => finish(g.kind, b.name)}>完成</button>
+              {#if !b.ref.is_head}<button class="small" onclick={() => checkout(b.ref)}>{t("切换")}</button>{/if}
+              <button class="small" onclick={() => publish(g.kind, b.name)}>{t("推送")}</button>
+              <button class="small primary" onclick={() => finish(g.kind, b.name)}>{t("完成")}</button>
             </span>
           </div>
         {/each}

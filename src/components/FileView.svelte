@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { api, type Blame, type HistoryEntry } from "../lib/api";
   import { errorText, type FileView, type RepoTab } from "../lib/store.svelte";
   import { avatarColor, formatDate, initials, relativeTime } from "../lib/util";
@@ -84,31 +85,31 @@
     <div class="title">
       <span class="path">{view.path}</span>
       {#if view.mode === "blame"}
-        <span class="tag mono">{view.rev ? view.rev.slice(0, 7) : "工作区"}</span>
+        <span class="tag mono">{view.rev ? view.rev.slice(0, 7) : t("工作区")}</span>
       {/if}
     </div>
     <div class="tabs">
-      <button class:on={view.mode === "history"} onclick={() => setMode("history")}>文件历史</button>
+      <button class:on={view.mode === "history"} onclick={() => setMode("history")}>{t("文件历史")}</button>
       <button class:on={view.mode === "blame"} onclick={() => setMode("blame")}>Blame</button>
     </div>
-    <button onclick={onClose} title="关闭 (Esc)">✕</button>
+    <button onclick={onClose} title={t("关闭 (Esc)")}>✕</button>
   </div>
 
   {#if view.mode === "history"}
     {#if historyError}
       <div class="msg error">{historyError}</div>
     {:else if !history}
-      <div class="msg">加载中…</div>
+      <div class="msg">{t("加载中…")}</div>
     {:else if history.length === 0}
-      <div class="msg">这个文件还没有提交记录</div>
+      <div class="msg">{t("这个文件还没有提交记录")}</div>
     {:else}
       <div class="hist">
         <div class="hlist">
-          <div class="hcount">{history.length} 个提交修改过这个文件{history.length >= 5000 ? "（只显示最近 5000 个）" : ""}</div>
+          <div class="hcount">{t("{0} 个提交修改过这个文件{1}", history.length, history.length >= 5000 ? t("（只显示最近 5000 个）") : "")}</div>
           {#each history as h (h.oid)}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class="hitem" class:sel={selected?.oid === h.oid} onclick={() => (selected = h)} ondblclick={() => gotoCommit(h.oid)} title="双击在提交图中定位">
+            <div class="hitem" class:sel={selected?.oid === h.oid} onclick={() => (selected = h)} ondblclick={() => gotoCommit(h.oid)} title={t("双击在提交图中定位")}>
               <span class="avatar" style="background:{avatarColor(h.email || h.author)}">{initials(h.author)}</span>
               <div class="hmain">
                 <div class="hsum">{h.summary}</div>
@@ -116,7 +117,7 @@
                   <span>{h.author}</span>
                   <span title={formatDate(h.time)}>{relativeTime(h.time)}</span>
                   <span class="mono">{h.oid.slice(0, 7)}</span>
-                  {#if h.old_path}<span class="ren" title="{h.old_path} → {h.path}">重命名</span>{/if}
+                  {#if h.old_path}<span class="ren" title="{h.old_path} → {h.path}">{t("重命名")}</span>{/if}
                 </div>
               </div>
             </div>
@@ -127,8 +128,8 @@
             {@const s = selected}
             <div class="hbar">
               <span class="hsum2">{s.summary}</span>
-              <button class="small" onclick={() => tab.openFile(s.path, "blame", s.oid)}>Blame 这个版本</button>
-              <button class="small" onclick={() => gotoCommit(s.oid)}>在图中定位</button>
+              <button class="small" onclick={() => tab.openFile(s.path, "blame", s.oid)}>{t("Blame 这个版本")}</button>
+              <button class="small" onclick={() => gotoCommit(s.oid)}>{t("在图中定位")}</button>
             </div>
             <div class="hdiff-body">
               {#key s.oid}
@@ -142,7 +143,7 @@
   {:else if blameError}
     <div class="msg error">{blameError}</div>
   {:else if !blame}
-    <div class="msg">加载中…</div>
+    <div class="msg">{t("加载中…")}</div>
   {:else}
     <div class="scroller" bind:this={scroller} bind:clientHeight={viewH} onscroll={() => (scrollTop = scroller!.scrollTop)}>
       <div class="spacer" style="height:{blame.lines.length * LINE_H}px">
@@ -157,12 +158,12 @@
                 class="gutter"
                 class:uncommitted={c.uncommitted}
                 style="--age:{c.uncommitted ? 1 : age(c.time)}"
-                title={c.uncommitted ? "还没有提交的改动" : `${c.summary}\n${c.author} · ${formatDate(c.time)} · ${c.oid.slice(0, 7)}\n点击在提交图中定位`}
+                title={c.uncommitted ? t("还没有提交的改动") : t("{0}\n{1} · {2} · {3}\n点击在提交图中定位", c.summary, c.author, formatDate(c.time), c.oid.slice(0, 7))}
                 onclick={() => !c.uncommitted && gotoCommit(c.oid)}
               >
                 {#if firstOfBlock(i)}
                   {#if c.uncommitted}
-                    <span class="who">未提交</span>
+                    <span class="who">{t("未提交")}</span>
                   {:else}
                     <span class="who">{c.author}</span>
                     <span class="when">{relativeTime(c.time)}</span>

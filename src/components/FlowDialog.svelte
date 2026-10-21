@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { untrack } from "svelte";
   import type { FlowConfig, FlowKind } from "../lib/api";
   import { app } from "../lib/store.svelte";
@@ -8,10 +9,10 @@
   const cfg = $derived(tab.flow);
 
   const KINDS: { kind: FlowKind; label: string; desc: string }[] = [
-    { kind: "feature", label: "Feature", desc: "新功能，从开发分支开始，完成后合并回开发分支" },
-    { kind: "bugfix", label: "Bugfix", desc: "开发中的问题修复，从开发分支开始，完成后合并回开发分支" },
-    { kind: "release", label: "Release", desc: "准备发布新版本，完成后合并到生产分支并打版本标签，再合并回开发分支" },
-    { kind: "hotfix", label: "Hotfix", desc: "线上紧急修复，从生产分支开始，完成后合并到生产分支并打标签，再合并回开发分支" },
+    { kind: "feature", label: "Feature", desc: t("新功能，从开发分支开始，完成后合并回开发分支") },
+    { kind: "bugfix", label: "Bugfix", desc: t("开发中的问题修复，从开发分支开始，完成后合并回开发分支") },
+    { kind: "release", label: "Release", desc: t("准备发布新版本，完成后合并到生产分支并打版本标签，再合并回开发分支") },
+    { kind: "hotfix", label: "Hotfix", desc: t("线上紧急修复，从生产分支开始，完成后合并到生产分支并打标签，再合并回开发分支") },
   ];
 
   // ---------- 表单状态 ----------
@@ -72,11 +73,11 @@
   const finishSteps = $derived.by(() => {
     if (!cfg) return [];
     const steps = isVersion
-      ? [`把 ${branch} 合并到 ${cfg.master}`, `在 ${cfg.master} 上打标签 ${tag}`, `把标签 ${tag} 合并回 ${cfg.develop}`]
-      : [`把 ${branch} 合并到 ${cfg.develop}`];
-    steps.push(`切换到 ${cfg.develop}`);
-    if (!keepBranch) steps.push(`删除本地分支 ${branch}`);
-    if (push) steps.push(isVersion ? `推送 ${cfg.master}、${cfg.develop} 和标签 ${tag}` : `推送 ${cfg.develop}`);
+      ? [t("把 {0} 合并到 {1}", branch, cfg.master), t("在 {0} 上打标签 {1}", cfg.master, tag), t("把标签 {0} 合并回 {1}", tag, cfg.develop)]
+      : [t("把 {0} 合并到 {1}", branch, cfg.develop)];
+    steps.push(t("切换到 {0}", cfg.develop));
+    if (!keepBranch) steps.push(t("删除本地分支 {0}", branch));
+    if (push) steps.push(isVersion ? t("推送 {0}、{1} 和标签 {2}", cfg.master, cfg.develop, tag) : t("推送 {0}", cfg.develop));
     return steps;
   });
 
@@ -89,13 +90,13 @@
     working = true;
     let ok = false;
     if (spec.mode === "init") {
-      ok = await tab.run({ op: "flow_init", config: { ...init, initialized: true } }, "正在初始化 Git Flow…");
+      ok = await tab.run({ op: "flow_init", config: { ...init, initialized: true } }, t("正在初始化 Git Flow…"));
     } else if (spec.mode === "start") {
       if (!name.trim()) {
         working = false;
         return nameInput?.focus();
       }
-      ok = await tab.run({ op: "flow_start", kind, name: name.trim(), base: base || null }, `正在创建 ${branch}…`);
+      ok = await tab.run({ op: "flow_start", kind, name: name.trim(), base: base || null }, t("正在创建 {0}…", branch));
     } else {
       ok = await tab.run(
         {
@@ -104,7 +105,7 @@
           name: name.trim(),
           options: { keep_branch: keepBranch, tag_message: tagMessage.trim() || null, push },
         },
-        `正在完成 ${branch}…`,
+        t("正在完成 {0}…", branch),
       );
     }
     working = false;
@@ -124,33 +125,33 @@
 <div class="overlay" onkeydown={onKey}>
   <div class="dialog" role="dialog" aria-modal="true">
     {#if spec.mode === "init"}
-      <div class="title">{cfg?.initialized ? "Git Flow 设置" : "初始化 Git Flow"}</div>
-      <div class="hint">设置保存在仓库的 git config 里，和命令行的 git flow、GitKraken、SourceTree 通用。</div>
+      <div class="title">{cfg?.initialized ? t("Git Flow 设置") : t("初始化 Git Flow")}</div>
+      <div class="hint">{t("设置保存在仓库的 git config 里，和命令行的 git flow、GitKraken、SourceTree 通用。")}</div>
       <div class="grid">
-        <label for="f-master">生产分支</label>
+        <label for="f-master">{t("生产分支")}</label>
         <select id="f-master" bind:value={init.master}>
           {#each locals.includes(init.master) ? locals : [init.master, ...locals] as b (b)}
             <option value={b}>{b}</option>
           {/each}
         </select>
-        <label for="f-develop">开发分支</label>
+        <label for="f-develop">{t("开发分支")}</label>
         <input id="f-develop" bind:value={init.develop} spellcheck="false" />
-        <label for="f-feature">Feature 前缀</label>
+        <label for="f-feature">{t("Feature 前缀")}</label>
         <input id="f-feature" bind:value={init.feature} spellcheck="false" />
-        <label for="f-bugfix">Bugfix 前缀</label>
+        <label for="f-bugfix">{t("Bugfix 前缀")}</label>
         <input id="f-bugfix" bind:value={init.bugfix} spellcheck="false" />
-        <label for="f-release">Release 前缀</label>
+        <label for="f-release">{t("Release 前缀")}</label>
         <input id="f-release" bind:value={init.release} spellcheck="false" />
-        <label for="f-hotfix">Hotfix 前缀</label>
+        <label for="f-hotfix">{t("Hotfix 前缀")}</label>
         <input id="f-hotfix" bind:value={init.hotfix} spellcheck="false" />
-        <label for="f-tag">版本标签前缀</label>
-        <input id="f-tag" bind:value={init.version_tag} placeholder="例如 v，可以留空" spellcheck="false" />
+        <label for="f-tag">{t("版本标签前缀")}</label>
+        <input id="f-tag" bind:value={init.version_tag} placeholder={t("例如 v，可以留空")} spellcheck="false" />
       </div>
       {#if !locals.includes(init.develop)}
-        <div class="note">开发分支 {init.develop} 还不存在，会从 {init.master} 创建。</div>
+        <div class="note">{t("开发分支 {0} 还不存在，会从 {1} 创建。", init.develop, init.master)}</div>
       {/if}
     {:else if spec.mode === "start"}
-      <div class="title">开始新的 Git Flow 分支</div>
+      <div class="title">{t("开始新的 Git Flow 分支")}</div>
       <div class="kinds">
         {#each KINDS as k (k.kind)}
           <button class="kind" class:on={kind === k.kind} onclick={() => resetStart(k.kind)}>{k.label}</button>
@@ -158,18 +159,18 @@
       </div>
       <div class="hint">{KINDS.find((k) => k.kind === kind)?.desc}</div>
       <div class="grid">
-        <label for="f-name">{isVersion ? "版本号" : "名称"}</label>
+        <label for="f-name">{isVersion ? t("版本号") : t("名称")}</label>
         <div class="prefixed">
           <span class="pfx">{prefix}</span>
           <input
             id="f-name"
             bind:this={nameInput}
             bind:value={name}
-            placeholder={isVersion ? "例如 1.2.0" : "例如 user-login"}
+            placeholder={isVersion ? t("例如 1.2.0") : t("例如 user-login")}
             spellcheck="false"
           />
         </div>
-        <label for="f-base">基于</label>
+        <label for="f-base">{t("基于")}</label>
         <select id="f-base" bind:value={base}>
           {#each locals.includes(base) ? locals : [base, ...locals] as b (b)}
             <option value={b}>{b}</option>
@@ -177,34 +178,34 @@
         </select>
       </div>
       {#if isVersion && name.trim()}
-        <div class="note">完成时会打标签 <b>{tag}</b></div>
+        <div class="note">{t("完成时会打标签")} <b>{tag}</b></div>
       {/if}
       {#if dirty}
-        <div class="note">当前未提交的更改会带到新分支上。</div>
+        <div class="note">{t("当前未提交的更改会带到新分支上。")}</div>
       {/if}
     {:else}
-      <div class="title">完成 {branch}</div>
+      <div class="title">{t("完成 {0}", branch)}</div>
       <ol class="steps">
         {#each finishSteps as s, i (i)}<li>{s}</li>{/each}
       </ol>
       {#if isVersion}
         <label class="field">
-          <span>标签说明</span>
-          <textarea bind:value={tagMessage} rows="3" placeholder={`默认为 “${kind === "release" ? "Release" : "Hotfix"} ${name}”`}></textarea>
+          <span>{t("标签说明")}</span>
+          <textarea bind:value={tagMessage} rows="3" placeholder={t("默认为 “{0} {1}”", kind === "release" ? "Release" : "Hotfix", name)}></textarea>
         </label>
       {/if}
-      <label class="check"><input type="checkbox" bind:checked={keepBranch} /> 完成后保留 {branch} 分支</label>
-      <label class="check"><input type="checkbox" bind:checked={push} /> 完成后推送到 origin</label>
+      <label class="check"><input type="checkbox" bind:checked={keepBranch} /> {t("完成后保留 {0} 分支", branch)}</label>
+      <label class="check"><input type="checkbox" bind:checked={push} /> {t("完成后推送到 origin")}</label>
       {#if dirty}
-        <div class="warn">有未提交的更改，需要先提交或 stash 才能完成。</div>
+        <div class="warn">{t("有未提交的更改，需要先提交或 stash 才能完成。")}</div>
       {/if}
-      <div class="hint">如果合并时出现冲突，解决冲突并提交后再点一次“完成”，已经做完的步骤会自动跳过。</div>
+      <div class="hint">{t("如果合并时出现冲突，解决冲突并提交后再点一次“完成”，已经做完的步骤会自动跳过。")}</div>
     {/if}
 
     <div class="buttons">
-      <button onclick={close}>取消</button>
+      <button onclick={close}>{t("取消")}</button>
       <button class="primary" disabled={working || (spec.mode === "finish" && dirty)} onclick={submit}>
-        {spec.mode === "init" ? (cfg?.initialized ? "保存" : "初始化") : spec.mode === "start" ? "开始" : "完成"}
+        {spec.mode === "init" ? (cfg?.initialized ? t("保存") : t("初始化")) : spec.mode === "start" ? t("开始") : t("完成")}
       </button>
     </div>
   </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -68,7 +69,7 @@
   });
 
   async function pickParent() {
-    const dir = await openDialog({ directory: true, title: "选择保存位置", defaultPath: parent || undefined });
+    const dir = await openDialog({ directory: true, title: t("选择保存位置"), defaultPath: parent || undefined });
     if (typeof dir === "string") parent = dir;
   }
 
@@ -125,26 +126,26 @@
 <div class="overlay" onkeydown={onKey}>
   <div class="dialog" role="dialog" aria-modal="true">
     <div class="tabs">
-      <button class:on={mode === "clone"} disabled={running} onclick={() => (mode = "clone")}>克隆远程仓库</button>
-      <button class:on={mode === "init"} disabled={running} onclick={() => (mode = "init")}>新建本地仓库</button>
+      <button class:on={mode === "clone"} disabled={running} onclick={() => (mode = "clone")}>{t("克隆远程仓库")}</button>
+      <button class:on={mode === "init"} disabled={running} onclick={() => (mode = "init")}>{t("新建本地仓库")}</button>
     </div>
 
     <div class="grid">
       {#if mode === "clone"}
-        <label for="c-url">仓库地址</label>
-        <input id="c-url" bind:this={urlInput} bind:value={url} disabled={running} placeholder="https://gitee.com/xxx/yyy.git 或 git@gitee.com:xxx/yyy.git" spellcheck="false" />
+        <label for="c-url">{t("仓库地址")}</label>
+        <input id="c-url" bind:this={urlInput} bind:value={url} disabled={running} placeholder={t("https://gitee.com/xxx/yyy.git 或 git@gitee.com:xxx/yyy.git")} spellcheck="false" />
       {/if}
-      <label for="c-parent">保存到</label>
+      <label for="c-parent">{t("保存到")}</label>
       <div class="row">
-        <input id="c-parent" bind:value={parent} disabled={running} placeholder="选择一个文件夹" spellcheck="false" />
-        <button disabled={running} onclick={pickParent}>选择…</button>
+        <input id="c-parent" bind:value={parent} disabled={running} placeholder={t("选择一个文件夹")} spellcheck="false" />
+        <button disabled={running} onclick={pickParent}>{t("选择…")}</button>
       </div>
-      <label for="c-name">文件夹名</label>
+      <label for="c-name">{t("文件夹名")}</label>
       <input id="c-name" bind:value={name} oninput={() => (nameEdited = true)} disabled={running} spellcheck="false" />
     </div>
-    {#if target}<div class="hint">将{mode === "clone" ? "克隆" : "创建"}到 {target}</div>{/if}
+    {#if target}<div class="hint">{mode === "clone" ? t("将克隆到 {0}", target) : t("将创建到 {0}", target)}</div>{/if}
     {#if mode === "clone" && !running && !error}
-      <div class="hint">需要账号密码的 HTTPS 地址，请先在系统的 Git 凭据管理器里登录过，或者改用 SSH 地址。</div>
+      <div class="hint">{t("需要账号密码的 HTTPS 地址，请先在系统的 Git 凭据管理器里登录过，或者改用 SSH 地址。")}</div>
     {/if}
 
     {#if running || lines.length || error}
@@ -152,7 +153,7 @@
         {#if running}
           <div class="ptitle">
             <span class="spinner"></span>
-            正在{mode === "clone" ? "克隆" : "创建"}… <span class="time">{now && elapsed(since)}</span>
+            {mode === "clone" ? t("正在克隆…") : t("正在创建…")} <span class="time">{now && elapsed(since)}</span>
           </div>
           {#if percent !== null}<div class="bar"><div style="width:{percent}%"></div></div>{/if}
         {/if}
@@ -167,11 +168,11 @@
 
     <div class="buttons">
       {#if running && mode === "clone"}
-        <button onclick={() => api.cancelOp("clone")}>取消克隆</button>
+        <button onclick={() => api.cancelOp("clone")}>{t("取消克隆")}</button>
       {:else}
-        <button onclick={close} disabled={running}>关闭</button>
+        <button onclick={close} disabled={running}>{t("关闭")}</button>
       {/if}
-      <button class="primary" disabled={!canStart} onclick={start}>{mode === "clone" ? "克隆" : "创建"}</button>
+      <button class="primary" disabled={!canStart} onclick={start}>{mode === "clone" ? t("克隆") : t("创建")}</button>
     </div>
   </div>
 </div>

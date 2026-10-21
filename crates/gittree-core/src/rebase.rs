@@ -2,6 +2,7 @@
 //! 这里生成 git 的待办列表，用 GIT_SEQUENCE_EDITOR 替换掉 git 自己生成的那份。
 //! 修改提交说明用 `exec git commit --amend -F 文件`，全程不需要打开编辑器。
 
+use crate::tr;
 use crate::log::Error;
 use crate::ops::{git, git_env};
 use serde::{Deserialize, Serialize};
@@ -24,7 +25,7 @@ pub struct PlanCommit {
 /// 从 from（包含）到 HEAD 沿第一父提交的所有提交，旧的在前
 pub fn plan(dir: &Path, from: &str) -> Result<Vec<PlanCommit>, Error> {
     if git(dir, &["merge-base", "--is-ancestor", from, "HEAD"]).is_err() {
-        return Err("这个提交不在当前分支的历史上，只能从当前分支的提交开始交互式变基".into());
+        return Err(tr!("这个提交不在当前分支的历史上，只能从当前分支的提交开始交互式变基", "This commit isn't in the current branch's history. Interactive rebase must start from a commit on the current branch").into());
     }
     let range = if has_parent(dir, from) { format!("{from}^..HEAD") } else { "HEAD".into() };
     let out = git(dir, &["log", "--first-parent", "--reverse", "--format=%H%x1f%P%x1f%an%x1f%at%x1f%B%x1e", &range])?;
@@ -47,7 +48,7 @@ pub fn plan(dir: &Path, from: &str) -> Result<Vec<PlanCommit>, Error> {
         })
         .collect();
     if list.len() > MAX_COMMITS {
-        return Err(format!("一次最多变基 {MAX_COMMITS} 个提交，请选择更近的起点（现在是 {} 个）", list.len()).into());
+        return Err(tr!("一次最多变基 {MAX_COMMITS} 个提交，请选择更近的起点（现在是 {} 个）", "At most {MAX_COMMITS} commits can be rebased at once; pick a more recent starting point (currently {})", list.len()).into());
     }
     Ok(list)
 }
@@ -83,13 +84,13 @@ fn sh_quote(p: &Path) -> String {
 /// 按 steps 的顺序执行交互式变基（steps 旧的在前）
 pub fn run(dir: &Path, git_dir: &Path, from: &str, steps: &[Step]) -> Result<String, Error> {
     if git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists() {
-        return Err("已经有一个变基在进行中，请先继续或中止".into());
+        return Err(tr!("已经有一个变基在进行中，请先继续或中止", "A rebase is already in progress. Continue or abort it first").into());
     }
     if steps.iter().find(|s| s.action != Action::Drop).is_some_and(|s| s.action == Action::Squash) {
-        return Err("第一个保留的提交不能合并到前一个提交".into());
+        return Err(tr!("第一个保留的提交不能合并到前一个提交", "The first kept commit can't be squashed into a previous one").into());
     }
     if steps.iter().all(|s| s.action == Action::Drop) {
-        return Err("至少要保留一个提交".into());
+        return Err(tr!("至少要保留一个提交", "Keep at least one commit").into());
     }
     let work = git_dir.join("gittree-rebase");
     let _ = std::fs::remove_dir_all(&work);
@@ -132,7 +133,7 @@ pub fn run(dir: &Path, git_dir: &Path, from: &str, steps: &[Step]) -> Result<Str
     }
     git_env(dir, &args, &[("GIT_SEQUENCE_EDITOR", &editor)]).map_err(|e| {
         if git_dir.join("rebase-merge").exists() {
-            format!("变基停在了冲突上。请解决冲突后点“继续”，或者点“中止”回到变基前。\n\n{e}").into()
+            tr!("变基停在了冲突上。请解决冲突后点“继续”，或者点“中止”回到变基前。\n\n{e}", "The rebase stopped on a conflict. Resolve it and click “Continue”, or click “Abort” to go back.\n\n{e}").into()
         } else {
             e
         }

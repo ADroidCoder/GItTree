@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { app } from "../lib/store.svelte";
 
   const d = $derived(app.dialog!);
@@ -45,9 +46,9 @@
       <label class="check"><input type="checkbox" bind:checked={checkbox} /> {d.checkbox.label}</label>
     {/if}
     <div class="buttons">
-      <button onclick={() => close(false)}>取消</button>
+      <button onclick={() => close(false)}>{t("取消")}</button>
       <button bind:this={confirmEl} class={d.danger ? "danger-solid" : "primary"} onclick={() => close(true)}>
-        {d.confirmText ?? "确定"}
+        {d.confirmText ?? t("确定")}
       </button>
     </div>
   </div>

@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { autoArchive, loadTasks, saveTasks, type Board } from "./board";
 import { api, type AskPassRequest, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type RepoInfo, type Stash, type Status } from "./api";
 
@@ -57,7 +58,7 @@ const stage = (text: string) => text.replace(/^remote:\s*/, "").split(":")[0];
 
 export function elapsed(since: number): string {
   const s = Math.max(0, Math.round((Date.now() - since) / 1000));
-  return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
+  return s < 60 ? t("{0} 秒", s) : t("{0} 分 {1} 秒", Math.floor(s / 60), s % 60);
 }
 
 /** 一个标签页 = 一个打开的仓库，各自保存选中的提交、工作区状态、搜索结果等 */
@@ -119,7 +120,7 @@ export class RepoTab {
   }
 
   get name() {
-    return this.repo?.name ?? this.requestedPath.split(/[\\/]/).filter(Boolean).pop() ?? "仓库";
+    return this.repo?.name ?? this.requestedPath.split(/[\\/]/).filter(Boolean).pop() ?? t("仓库");
   }
 
   get changeCount() {
@@ -251,7 +252,7 @@ export class RepoTab {
   /** 只显示指定的分支（空数组 = 显示全部，["HEAD"] = 只看当前分支） */
   async setFocus(refs: string[]) {
     if (!this.id) return;
-    this.busy = refs.length ? "正在筛选分支…" : "正在加载全部分支…";
+    this.busy = refs.length ? t("正在筛选分支…") : t("正在加载全部分支…");
     try {
       this.repo = await api.setFocus(this.id, refs);
       this.graphVersion++;
@@ -288,7 +289,7 @@ export class RepoTab {
     }
     try {
       const out = await api.gitOp(this.id, op);
-      if (label) this.addLog({ text: `✓ 完成，用时 ${elapsed(this.busySince)}`, transient: false, kind: "ok" });
+      if (label) this.addLog({ text: t("✓ 完成，用时 {0}", elapsed(this.busySince)), transient: false, kind: "ok" });
       if (label && out.trim()) toast(out.trim().split("\n").slice(-8).join("\n"));
       return true;
     } catch (e) {
@@ -300,7 +301,7 @@ export class RepoTab {
     } finally {
       if (label) {
         // 获取了很多新提交时重新加载历史也要一会儿，继续显示提示
-        this.busy = "正在刷新提交图…";
+        this.busy = t("正在刷新提交图…");
         this.cancellable = false;
         this.progressLine = "";
       }
@@ -321,12 +322,12 @@ export class RepoTab {
   async undo() {
     const what = this.repo?.undo;
     if (!what || this.busy) return;
-    this.busy = `正在撤销 ${what}…`;
+    this.busy = t("正在撤销 {0}…", what);
     this.busySince = Date.now();
     this.cancellable = false;
     try {
       toast(await api.undoLast(this.id));
-      this.addLog({ text: `↶ 撤销：${what}`, transient: false, kind: "ok" });
+      this.addLog({ text: t("↶ 撤销：{0}", what), transient: false, kind: "ok" });
     } catch (e) {
       toast(errorText(e), "error");
     } finally {
@@ -340,7 +341,7 @@ export class RepoTab {
     if (this.autoFetching || this.busy || !this.repo) return;
     this.lastFetch = Date.now();
     this.autoFetching = (async () => {
-      this.addLog({ text: `—— 自动获取 · ${new Date().toLocaleTimeString()}`, transient: false, kind: "ok" });
+      this.addLog({ text: t("—— 自动获取 · {0}", new Date().toLocaleTimeString()), transient: false, kind: "ok" });
       try {
         await api.gitOp(this.id, { op: "fetch", quiet: true });
         await this.refresh();
@@ -360,7 +361,7 @@ export class RepoTab {
   cancel() {
     if (!this.cancellable) return;
     this.cancellable = false;
-    this.progressLine = "正在取消…";
+    this.progressLine = t("正在取消…");
     api.cancelOp(this.id);
   }
 
@@ -400,7 +401,7 @@ export class RepoTab {
 
   async jumpToOid(oid: string) {
     const row = await api.rowOf(this.id, oid);
-    if (row === null) return toast("这个提交不在当前图中", "error");
+    if (row === null) return toast(t("这个提交不在当前图中"), "error");
     this.select(row, oid);
     this.scrollTo(row);
   }
@@ -470,7 +471,7 @@ let tasksTimer = 0;
 export function saveTasksSoon() {
   clearTimeout(tasksTimer);
   tasksTimer = window.setTimeout(() => {
-    if (app.tasks) saveTasks($state.snapshot(app.tasks) as Board).catch((e) => toast(`任务保存失败：${errorText(e)}`, "error"));
+    if (app.tasks) saveTasks($state.snapshot(app.tasks) as Board).catch((e) => toast(t("任务保存失败：{0}", errorText(e)), "error"));
   }, 400);
 }
 
@@ -484,10 +485,10 @@ function initialEditor(): string {
 
 export async function chooseEditor() {
   const r = await dialog({
-    title: "编辑器命令",
-    message: "用来打开仓库和文件的命令，例如 code（VS Code）、cursor、idea、subl、webstorm",
+    title: t("编辑器命令"),
+    message: t("用来打开仓库和文件的命令，例如 code（VS Code）、cursor、idea、subl、webstorm"),
     input: { value: app.editor, placeholder: "code" },
-    confirmText: "保存",
+    confirmText: t("保存"),
   });
   if (!r?.input.trim()) return;
   app.editor = r.input.trim();
@@ -569,7 +570,7 @@ export function dialog(spec: Omit<DialogSpec, "resolve">): Promise<{ input: stri
   });
 }
 
-export async function confirm(title: string, message: string, confirmText = "确定", danger = false) {
+export async function confirm(title: string, message: string, confirmText = t("确定"), danger = false) {
   return (await dialog({ title, message, confirmText, danger })) !== null;
 }
 

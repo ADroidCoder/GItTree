@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { app, forgetRepo, openRepo, recentRepos } from "../lib/store.svelte";
 
   let { onOpenFolder }: { onOpenFolder: () => void } = $props();
@@ -8,14 +9,14 @@
 <div class="welcome">
   <div class="card">
     <h1>GitTree</h1>
-    <p class="sub">快速、免费的 Git 图形客户端</p>
-    <button class="primary big" onclick={onOpenFolder}>打开本地仓库…</button>
+    <p class="sub">{t("快速、免费的 Git 图形客户端")}</p>
+    <button class="primary big" onclick={onOpenFolder}>{t("打开本地仓库…")}</button>
     <div class="more-actions">
-      <button onclick={() => (app.cloneDialog = { mode: "clone" })}>克隆远程仓库…</button>
-      <button onclick={() => (app.cloneDialog = { mode: "init" })}>新建仓库…</button>
+      <button onclick={() => (app.cloneDialog = { mode: "clone" })}>{t("克隆远程仓库…")}</button>
+      <button onclick={() => (app.cloneDialog = { mode: "init" })}>{t("新建仓库…")}</button>
     </div>
     {#if recent.length}
-      <div class="recent-title">最近打开</div>
+      <div class="recent-title">{t("最近打开")}</div>
       <div class="recent">
         {#each recent as p (p)}
           <div class="r">
@@ -25,7 +26,7 @@
             </button>
             <button
               class="x"
-              title="从列表移除"
+              title={t("从列表移除")}
               onclick={() => {
                 forgetRepo(p);
                 recent = recentRepos();

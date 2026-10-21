@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { unarchive, type Board, type Card } from "../lib/board";
   import { confirm, saveTasksSoon } from "../lib/store.svelte";
   import { avatarColor, initials } from "../lib/util";
@@ -24,7 +25,7 @@
   let shown = $state(PAGE);
 
   const repoName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
-  const columnName = (id: string) => board.columns.find((c) => c.id === id)?.name ?? "已删除的列";
+  const columnName = (id: string) => board.columns.find((c) => c.id === id)?.name ?? t("已删除的列");
 
   /** 归档的任务，最近归档的在前，和看板用同一套筛选 */
   const cards = $derived.by(() => {
@@ -42,7 +43,7 @@
     const out: { month: string; cards: Card[] }[] = [];
     for (const c of cards.slice(0, shown)) {
       const d = new Date(c.archived);
-      const month = `${d.getFullYear()} 年 ${d.getMonth() + 1} 月`;
+      const month = t("{0} 年 {1} 月", d.getFullYear(), d.getMonth() + 1);
       if (out[out.length - 1]?.month !== month) out.push({ month, cards: [] });
       out[out.length - 1].cards.push(c);
     }
@@ -60,13 +61,13 @@
   }
 
   async function remove(c: Card) {
-    if (!(await confirm("删除任务", `确定永久删除 “${c.title || "（无标题）"}” 吗？`, "删除", true))) return;
+    if (!(await confirm(t("删除任务"), t("确定永久删除 “{0}” 吗？", c.title || t("（无标题）")), t("删除"), true))) return;
     board.cards = board.cards.filter((x) => x.id !== c.id);
     saveTasksSoon();
   }
 
   async function removeAll() {
-    if (!(await confirm("删除归档", `永久删除下面列出的 ${cards.length} 个归档任务？删除后不能恢复。`, "全部删除", true))) return;
+    if (!(await confirm(t("删除归档"), t("永久删除下面列出的 {0} 个归档任务？删除后不能恢复。", cards.length), t("全部删除"), true))) return;
     const ids = new Set(cards.map((c) => c.id));
     board.cards = board.cards.filter((c) => !ids.has(c.id));
     saveTasksSoon();
@@ -75,25 +76,25 @@
 
 <div class="archive">
   <div class="head">
-    <span class="title">归档</span>
-    <span class="count">{cards.length} 个任务</span>
+    <span class="title">{t("归档")}</span>
+    <span class="count">{t("{0} 个任务", cards.length)}</span>
     <span class="grow"></span>
-    <label for="auto-archive">完成后自动归档</label>
+    <label for="auto-archive">{t("完成后自动归档")}</label>
     <select id="auto-archive" value={board.autoArchiveDays} onchange={(e) => setAutoArchive(Number(e.currentTarget.value))}>
-      <option value={1}>1 天后</option>
-      <option value={3}>3 天后</option>
-      <option value={7}>7 天后</option>
-      <option value={14}>14 天后</option>
-      <option value={30}>30 天后</option>
-      <option value={0}>不自动归档</option>
+      <option value={1}>{t("1 天后")}</option>
+      <option value={3}>{t("3 天后")}</option>
+      <option value={7}>{t("7 天后")}</option>
+      <option value={14}>{t("14 天后")}</option>
+      <option value={30}>{t("30 天后")}</option>
+      <option value={0}>{t("不自动归档")}</option>
     </select>
-    {#if cards.length}<button class="danger" onclick={removeAll}>全部删除</button>{/if}
+    {#if cards.length}<button class="danger" onclick={removeAll}>{t("全部删除")}</button>{/if}
   </div>
 
   <div class="list">
     {#if cards.length === 0}
       <div class="empty">
-        {filter || assigneeFilter || repoFilter ? "没有符合筛选条件的归档任务" : "还没有归档的任务。已完成列里的任务可以手动归档，也会按上面的设置自动归档。"}
+        {filter || assigneeFilter || repoFilter ? t("没有符合筛选条件的归档任务") : t("还没有归档的任务。已完成列里的任务可以手动归档，也会按上面的设置自动归档。")}
       </div>
     {/if}
     {#each groups as g (g.month)}
@@ -101,9 +102,9 @@
       {#each g.cards as c (c.id)}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="row" onclick={() => onOpen(c)} title="点击查看详情">
+        <div class="row" onclick={() => onOpen(c)} title={t("点击查看详情")}>
           <span class="date">{date(c.archived)}</span>
-          <span class="name">{c.title || "（无标题）"}</span>
+          <span class="name">{c.title || t("（无标题）")}</span>
           <span class="col">{columnName(c.column)}</span>
           {#if c.repo}<span class="tag repo" title={c.repo}>▣ {repoName(c.repo)}</span>{/if}
           {#if c.branch}<span class="tag branch" title={c.branch}>⑂ {c.branch}</span>{/if}
@@ -111,14 +112,14 @@
             <span class="avatar" style="background:{avatarColor(c.assignee)}" title={c.assignee}>{initials(c.assignee)}</span>
           {/if}
           <span class="acts">
-            <button onclick={(e) => (e.stopPropagation(), restore(c))} title="放回看板">恢复</button>
-            <button onclick={(e) => (e.stopPropagation(), remove(c))} title="永久删除">删除</button>
+            <button onclick={(e) => (e.stopPropagation(), restore(c))} title={t("放回看板")}>{t("恢复")}</button>
+            <button onclick={(e) => (e.stopPropagation(), remove(c))} title={t("永久删除")}>{t("删除")}</button>
           </span>
         </div>
       {/each}
     {/each}
     {#if cards.length > shown}
-      <button class="more" onclick={() => (shown += PAGE)}>再显示 {Math.min(PAGE, cards.length - shown)} 个（还有 {cards.length - shown} 个）</button>
+      <button class="more" onclick={() => (shown += PAGE)}>{t("再显示 {0} 个（还有 {1} 个）", Math.min(PAGE, cards.length - shown), cards.length - shown)}</button>
     {/if}
   </div>
 </div>

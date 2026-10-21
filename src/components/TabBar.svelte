@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
+  import { updater } from "../lib/updater.svelte";
   import { activate, app, closeTab, showTasks } from "../lib/store.svelte";
   import { isMac } from "../lib/util";
   import RepoPicker from "./RepoPicker.svelte";
@@ -11,8 +13,8 @@
 <!-- macOS 上标题栏和标签栏合在一起，左边给红绿灯按钮留位置；整条可以拖动窗口 -->
 <div class="tabbar" class:mac={isMac} data-tauri-drag-region>
   <!-- 全局任务面板，固定在最左边，不属于任何仓库 -->
-  <button class="pinned" class:active={app.view === "tasks"} onclick={showTasks} title="任务面板">
-    ▦ 任务
+  <button class="pinned" class:active={app.view === "tasks"} onclick={showTasks} title={t("任务面板")}>
+    {t("▦ 任务")}
     {#if app.tasks}
       {@const last = app.tasks.columns[app.tasks.columns.length - 1]?.id}
       {@const open = app.tasks.cards.filter((c) => c.column !== last && !c.archived).length}
@@ -20,40 +22,45 @@
     {/if}
   </button>
   <span class="divider"></span>
-  {#each app.tabs as t (t.key)}
+  {#each app.tabs as tb (tb.key)}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div
       class="tab"
-      class:active={app.view === "repo" && t.key === app.activeKey}
+      class:active={app.view === "repo" && tb.key === app.activeKey}
       role="tab"
       tabindex="-1"
-      aria-selected={t.key === app.activeKey}
-      title={t.id || t.requestedPath}
-      onclick={() => activate(t)}
-      onauxclick={(e) => e.button === 1 && closeTab(t)}
+      aria-selected={tb.key === app.activeKey}
+      title={tb.id || tb.requestedPath}
+      onclick={() => activate(tb)}
+      onauxclick={(e) => e.button === 1 && closeTab(tb)}
     >
-      <span class="ico">{t.loading ? "⟳" : t.error ? "⚠" : "⎇"}</span>
-      <span class="name">{t.name}</span>
-      {#if t.changeCount}<span class="dot" title="有未提交的更改"></span>{/if}
+      <span class="ico">{tb.loading ? "⟳" : tb.error ? "⚠" : "⎇"}</span>
+      <span class="name">{tb.name}</span>
+      {#if tb.changeCount}<span class="dot" title={t("有未提交的更改")}></span>{/if}
       <button
         class="close"
-        title="关闭标签页"
+        title={t("关闭标签页")}
         onclick={(e) => {
           e.stopPropagation();
-          closeTab(t);
+          closeTab(tb);
         }}>✕</button
       >
     </div>
   {/each}
   <button
     class="add"
-    title="打开仓库"
+    title={t("打开仓库")}
     onclick={(e) => {
       const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
       picker = { x: r.left, y: r.bottom + 4 };
     }}>＋</button
   >
   <div class="fill" data-tauri-drag-region></div>
+  {#if updater.update}
+    <button class="update" onclick={() => (updater.open = true)} title={t("查看更新内容并安装")}>
+      ⬆ {t("新版本 {0}", updater.update.version)}
+    </button>
+  {/if}
 </div>
 
 {#if picker}
@@ -199,6 +206,17 @@
   .add:hover {
     background: var(--bg-hover);
     color: var(--text);
+  }
+  .update {
+    align-self: center;
+    flex-shrink: 0;
+    height: 24px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 12px;
   }
   .fill {
     flex: 1;

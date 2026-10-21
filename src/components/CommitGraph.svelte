@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { onMount, untrack } from "svelte";
   import { api, type Edge, type RefInfo, type Row } from "../lib/api";
   import { app, drag as refDrag, type RepoTab } from "../lib/store.svelte";
@@ -434,29 +435,29 @@
 <div class="graph">
   <div class="header">
     <div class="h-ref" style="width:{refWidth}px">
-      分支 / 标签
+      {t("分支 / 标签")}
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="resize" onpointerdown={resizer("ref")}></div>
     </div>
     <div class="h-graph" style="width:{graphWidth}px">
-      分支图
+      {t("分支图")}
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="resize" onpointerdown={resizer("graph")}></div>
     </div>
     <div class="h-msg">
-      提交说明
+      {t("提交说明")}
       {#if tab.focus.length}
         <span class="focus-info">
           {tab.focus.length === 1 && tab.focus[0] === "HEAD"
-            ? "只显示当前分支"
-            : `只显示：${tab.focus.map((f) => f.replace(/^refs\/(heads|remotes)\//, "")).join("、")}`}
-          <button class="focus-clear" onclick={() => tab.setFocus([])}>显示全部</button>
+            ? t("只显示当前分支")
+            : t("只显示：{0}", tab.focus.map((f) => f.replace(/^refs\/(heads|remotes)\//, "")).join("、"))}
+          <button class="focus-clear" onclick={() => tab.setFocus([])}>{t("显示全部")}</button>
         </span>
       {/if}
     </div>
-    <div class="h-author">作者</div>
-    <div class="h-date">时间</div>
-    <div class="h-sha">提交</div>
+    <div class="h-author">{t("作者")}</div>
+    <div class="h-date">{t("时间")}</div>
+    <div class="h-sha">{t("提交")}</div>
   </div>
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="viewport" bind:this={viewport} tabindex="0" onkeydown={onKey} role="grid">
@@ -468,9 +469,9 @@
             <div class="c-ref" style="width:{refWidth}px"></div>
             <div class="c-graph" style="width:{graphWidth}px"></div>
             <div class="c-msg">
-              <span class="wip-label">// 未提交的更改</span>
-              <span class="wip-count">{tab.changeCount} 个文件</span>
-              {#if tab.status?.in_progress}<span class="wip-state">{tab.status.in_progress} 进行中</span>{/if}
+              <span class="wip-label">{t("// 未提交的更改")}</span>
+              <span class="wip-count">{t("{0} 个文件", tab.changeCount)}</span>
+              {#if tab.status?.in_progress}<span class="wip-state">{t("{0} 进行中", tab.status.in_progress)}</span>{/if}
             </div>
           </div>
         {:else}
@@ -543,7 +544,7 @@
       </div>
     {/if}
     {#if total === 0 && tab.repo}
-      <div class="empty">这个仓库还没有任何提交</div>
+      <div class="empty">{t("这个仓库还没有任何提交")}</div>
     {/if}
   </div>
 </div>
@@ -556,7 +557,7 @@
     class:is-head={b.ref.is_head}
     style="--c:{laneColor(row.color)}"
     class:drop-target={dropOn === b.ref.full}
-    title={b.ref.kind === "tag" ? b.ref.full : `${b.ref.full}\n拖到另一个分支上可以合并或变基`}
+    title={b.ref.kind === "tag" ? b.ref.full : t("{0}\n拖到另一个分支上可以合并或变基", b.ref.full)}
     draggable={b.ref.kind !== "tag"}
     ondragstart={(e) => {
       refDrag.ref = b.ref;
@@ -593,7 +594,7 @@
     {#if b.ref.is_head}<span class="ico">✓</span>{/if}
     {#if b.ref.kind === "tag"}<span class="ico">◆</span>{:else if b.local}<span class="ico">💻</span>{/if}
     <span class="blabel">{b.label}</span>
-    {#if b.remote}<span class="ico" title={b.local ? "已与远程同步" : "远程分支"}>☁</span>{/if}
+    {#if b.remote}<span class="ico" title={b.local ? t("已与远程同步") : t("远程分支")}>☁</span>{/if}
   </span>
 {/snippet}
 

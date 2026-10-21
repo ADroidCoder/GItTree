@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import type { RefInfo, Stash } from "../lib/api";
   import { drag, type RepoTab } from "../lib/store.svelte";
 
@@ -146,8 +147,8 @@
   >
     <span class="mark">{r.is_head ? "✓" : ""}</span>
     <span class="label">{label}</span>
-    {#if r.ahead}<span class="ab up" title="领先上游 {r.ahead} 个提交">{r.ahead}↑</span>{/if}
-    {#if r.behind}<span class="ab down" title="落后上游 {r.behind} 个提交">{r.behind}↓</span>{/if}
+    {#if r.ahead}<span class="ab up" title={t("领先上游 {0} 个提交", r.ahead)}>{r.ahead}↑</span>{/if}
+    {#if r.behind}<span class="ab down" title={t("落后上游 {0} 个提交", r.behind)}>{r.behind}↓</span>{/if}
   </div>
 {/snippet}
 
@@ -178,15 +179,15 @@
 
 <div class="sidebar">
   <div class="filter">
-    <input placeholder="筛选分支、标签、stash" bind:value={filter} />
+    <input placeholder={t("筛选分支、标签、stash")} bind:value={filter} />
   </div>
   <div class="scroll">
-    {@render section("local", "💻", "本地", locals.length)}
+    {@render section("local", "💻", t("本地"), locals.length)}
     {#if isOpen("local")}
       {@render folder(localTree, 0)}
     {/if}
 
-    {@render section("remote", "☁", "远程", remoteCount)}
+    {@render section("remote", "☁", t("远程"), remoteCount)}
     {#if isOpen("remote")}
       {#each remotes as g (g.name)}
         <button class="folder" style="padding-left:14px" onclick={() => toggle(`remote:${g.name}`)}>
@@ -201,13 +202,13 @@
       {/each}
     {/if}
 
-    {@render section("tag", "◆", "标签", tags.length)}
+    {@render section("tag", "◆", t("标签"), tags.length)}
     {#if isOpen("tag")}
       {#each tags.slice(0, tagLimit) as r (r.full)}
         {@render refItem(r, r.name, 0)}
       {/each}
       {#if tags.length > tagLimit}
-        <button class="more" onclick={() => (tagLimit += 500)}>还有 {tags.length - tagLimit} 个标签…</button>
+        <button class="more" onclick={() => (tagLimit += 500)}>{t("还有 {0} 个标签…", tags.length - tagLimit)}</button>
       {/if}
     {/if}
 

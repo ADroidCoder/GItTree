@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { api, type Choice, type ConflictFile } from "../lib/api";
   import { confirm, errorText, type RepoTab } from "../lib/store.svelte";
 
@@ -77,16 +78,16 @@
   async function save() {
     if (!file || done < file.conflicts) return;
     saving = true;
-    const ok = await tab.run({ op: "resolve_conflict", path, choices: choices as Choice[] }, "正在保存…");
+    const ok = await tab.run({ op: "resolve_conflict", path, choices: choices as Choice[] }, t("正在保存…"));
     saving = false;
     if (ok) onClose();
   }
 
   async function useSide(theirs: boolean) {
     const exists = theirs ? file?.theirs_exists : file?.ours_exists;
-    const name = theirs ? "传入" : "当前";
-    if (!exists && !(await confirm("删除文件", `${name}一侧已经删除了这个文件，使用${name}的版本会删除 ${path}。`, "删除", true))) return;
-    if (await tab.run({ op: "resolve_side", path, theirs }, "正在解决冲突…")) onClose();
+    const name = theirs ? t("传入") : t("当前");
+    if (!exists && !(await confirm(t("删除文件"), t("{0}一侧已经删除了这个文件，使用{1}的版本会删除 {2}。", name, name, path), t("删除"), true))) return;
+    if (await tab.run({ op: "resolve_side", path, theirs }, t("正在解决冲突…"))) onClose();
   }
 
   /** 普通内容太长时只显示开头和结尾几行 */
@@ -105,43 +106,43 @@
 <div class="cv">
   <div class="bar">
     <div class="title">
-      <span class="badge">冲突</span>
+      <span class="badge">{t("冲突")}</span>
       <span class="path">{path}</span>
-      {#if file?.conflicts}<span class="count">{done} / {file.conflicts} 处已选择</span>{/if}
+      {#if file?.conflicts}<span class="count">{t("{0} / {1} 处已选择", done, file.conflicts)}</span>{/if}
     </div>
     <div class="actions">
-      <button onclick={() => useSide(false)} title="整个文件使用当前分支的版本">全部用当前</button>
-      <button onclick={() => useSide(true)} title="整个文件使用传入的版本">全部用传入</button>
-      <button onclick={onClose} title="关闭 (Esc)">✕</button>
+      <button onclick={() => useSide(false)} title={t("整个文件使用当前分支的版本")}>{t("全部用当前")}</button>
+      <button onclick={() => useSide(true)} title={t("整个文件使用传入的版本")}>{t("全部用传入")}</button>
+      <button onclick={onClose} title={t("关闭 (Esc)")}>✕</button>
     </div>
   </div>
   <div class="hint">
     {#if rebasing}
-      变基时，“当前”是你要变基到的目标分支上的内容，“传入”是你自己正在重放的提交。
+      {t("变基时，“当前”是你要变基到的目标分支上的内容，“传入”是你自己正在重放的提交。")}
     {:else}
-      “当前”是你所在分支（HEAD）的内容，“传入”是要合并进来的内容。
+      {t("“当前”是你所在分支（HEAD）的内容，“传入”是要合并进来的内容。")}
     {/if}
-    每一处冲突选一个结果，全部选完后点“保存并标记为已解决”。
+    {t("每一处冲突选一个结果，全部选完后点“保存并标记为已解决”。")}
   </div>
 
   {#if error}
     <div class="msg error">{error}</div>
   {:else if !file}
-    <div class="msg">加载中…</div>
+    <div class="msg">{t("加载中…")}</div>
   {:else if file.binary || file.conflicts === 0}
     <div class="msg">
       {#if file.binary}
-        二进制文件无法逐处合并，请选择整个文件使用哪一边的版本。
+        {t("二进制文件无法逐处合并，请选择整个文件使用哪一边的版本。")}
       {:else if !file.ours_exists || !file.theirs_exists}
-        一边修改了这个文件，另一边把它删除了。请选择保留修改后的文件，或者删除它。
+        {t("一边修改了这个文件，另一边把它删除了。请选择保留修改后的文件，或者删除它。")}
       {:else}
-        文件里已经没有冲突标记了。如果你已经在编辑器里改好，可以直接标记为已解决。
+        {t("文件里已经没有冲突标记了。如果你已经在编辑器里改好，可以直接标记为已解决。")}
       {/if}
       <div class="side-btns">
-        <button onclick={() => useSide(false)}>{file.ours_exists ? "使用当前的版本" : "删除文件（当前一侧已删除）"}</button>
-        <button onclick={() => useSide(true)}>{file.theirs_exists ? "使用传入的版本" : "删除文件（传入一侧已删除）"}</button>
+        <button onclick={() => useSide(false)}>{file.ours_exists ? t("使用当前的版本") : t("删除文件（当前一侧已删除）")}</button>
+        <button onclick={() => useSide(true)}>{file.theirs_exists ? t("使用传入的版本") : t("删除文件（传入一侧已删除）")}</button>
         {#if !file.binary && file.ours_exists && file.theirs_exists}
-          <button class="primary" onclick={() => tab.run({ op: "stage", paths: [path] }).then((ok) => ok && onClose())}>标记为已解决</button>
+          <button class="primary" onclick={() => tab.run({ op: "stage", paths: [path] }).then((ok) => ok && onClose())}>{t("标记为已解决")}</button>
         {/if}
       </div>
     </div>
@@ -152,7 +153,7 @@
           {@const p = preview(c.text)}
           {#if p.hidden && !expanded.has(k)}
             <pre class="common">{p.head}</pre>
-            <button class="fold" onclick={() => (expanded = new Set(expanded).add(k))}>… {p.hidden} 行相同内容，点击展开 …</button>
+            <button class="fold" onclick={() => (expanded = new Set(expanded).add(k))}>{t("… {0} 行相同内容，点击展开 …", p.hidden)}</button>
             <pre class="common">{p.tail}</pre>
           {:else}
             <pre class="common">{show(c.text)}</pre>
@@ -160,14 +161,14 @@
         {:else}
           <div class="conflict" class:resolved={!!choices[idx]}>
             <div class="chead">
-              <span>冲突 {idx + 1}</span>
-              {#if choices[idx]}<span class="ok">✓ 已选择</span>{/if}
+              <span>{t("冲突 {0}", idx + 1)}</span>
+              {#if choices[idx]}<span class="ok">{t("✓ 已选择")}</span>{/if}
               <span class="grow"></span>
-              {#if choices[idx]}<button class="small" onclick={() => (choices[idx] = null)}>重新选择</button>{/if}
+              {#if choices[idx]}<button class="small" onclick={() => (choices[idx] = null)}>{t("重新选择")}</button>{/if}
             </div>
             {#if choices[idx] && !editing.has(idx)}
               <pre class="result">{show(resultOf(idx))}</pre>
-              {#if file.utf8}<button class="small edit" onclick={() => edit(idx)}>手动编辑</button>{/if}
+              {#if file.utf8}<button class="small edit" onclick={() => edit(idx)}>{t("手动编辑")}</button>{/if}
             {:else if editing.has(idx) && choices[idx]?.pick === "text"}
               <textarea
                 class="editor"
@@ -176,26 +177,26 @@
                 oninput={(e) => (choices[idx] = { pick: "text", text: (e.target as HTMLTextAreaElement).value })}
               ></textarea>
               <div class="erow">
-                <button class="small" onclick={() => (editing = new Set([...editing].filter((x) => x !== idx)))}>完成编辑</button>
+                <button class="small" onclick={() => (editing = new Set([...editing].filter((x) => x !== idx)))}>{t("完成编辑")}</button>
               </div>
             {:else}
               <div class="sides">
                 <div class="side ours">
-                  <div class="slabel">当前 <span class="ref">{c.ours_label}</span></div>
+                  <div class="slabel">{t("当前")} <span class="ref">{c.ours_label}</span></div>
                   <pre>{show(c.ours)}</pre>
-                  <button class="primary small" onclick={() => pick(idx, { pick: "ours" })}>用当前</button>
+                  <button class="primary small" onclick={() => pick(idx, { pick: "ours" })}>{t("用当前")}</button>
                 </div>
                 <div class="side theirs">
-                  <div class="slabel">传入 <span class="ref">{c.theirs_label}</span></div>
+                  <div class="slabel">{t("传入")} <span class="ref">{c.theirs_label}</span></div>
                   <pre>{show(c.theirs)}</pre>
-                  <button class="primary small" onclick={() => pick(idx, { pick: "theirs" })}>用传入</button>
+                  <button class="primary small" onclick={() => pick(idx, { pick: "theirs" })}>{t("用传入")}</button>
                 </div>
               </div>
               <div class="more">
-                <button class="small" onclick={() => pick(idx, { pick: "ours_theirs" })}>两边都要（当前在前）</button>
-                <button class="small" onclick={() => pick(idx, { pick: "theirs_ours" })}>两边都要（传入在前）</button>
-                {#if c.base !== null}<button class="small" onclick={() => pick(idx, { pick: "base" })}>用修改前的</button>{/if}
-                {#if file.utf8}<button class="small" onclick={() => edit(idx)}>手动编辑</button>{/if}
+                <button class="small" onclick={() => pick(idx, { pick: "ours_theirs" })}>{t("两边都要（当前在前）")}</button>
+                <button class="small" onclick={() => pick(idx, { pick: "theirs_ours" })}>{t("两边都要（传入在前）")}</button>
+                {#if c.base !== null}<button class="small" onclick={() => pick(idx, { pick: "base" })}>{t("用修改前的")}</button>{/if}
+                {#if file.utf8}<button class="small" onclick={() => edit(idx)}>{t("手动编辑")}</button>{/if}
               </div>
             {/if}
           </div>
@@ -203,12 +204,12 @@
       {/each}
     </div>
     <div class="footer">
-      <button class="small" onclick={() => pickAll("ours")}>剩下的都用当前</button>
-      <button class="small" onclick={() => pickAll("theirs")}>剩下的都用传入</button>
+      <button class="small" onclick={() => pickAll("ours")}>{t("剩下的都用当前")}</button>
+      <button class="small" onclick={() => pickAll("theirs")}>{t("剩下的都用传入")}</button>
       <span class="grow"></span>
-      {#if !file.utf8}<span class="note">非 UTF-8 文件，不能手动编辑</span>{/if}
+      {#if !file.utf8}<span class="note">{t("非 UTF-8 文件，不能手动编辑")}</span>{/if}
       <button class="primary" disabled={saving || done < file.conflicts} onclick={save}>
-        保存并标记为已解决{done < file.conflicts ? `（还有 ${file.conflicts - done} 处）` : ""}
+        {t("保存并标记为已解决{0}", done < file.conflicts ? t("（还有 {0} 处）", file.conflicts - done) : "")}
       </button>
     </div>
   {/if}

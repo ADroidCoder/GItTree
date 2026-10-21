@@ -4,6 +4,7 @@
 //! 为了不误伤之后的改动，撤销前会检查这些引用是否还停在操作后的位置，
 //! 如果在那之后又提交或切换过（包括在命令行里），就拒绝撤销。
 
+use crate::tr;
 use crate::log::Error;
 use crate::ops::git;
 use std::collections::{BTreeMap, BTreeSet};
@@ -87,17 +88,17 @@ pub fn undo(dir: &Path, git_dir: &Path, e: &Entry) -> Result<String, Error> {
         || git_dir.join("CHERRY_PICK_HEAD").exists()
         || git_dir.join("REVERT_HEAD").exists()
     {
-        return Err("还有没完成的合并 / 变基，请先完成或中止后再撤销".into());
+        return Err(tr!("还有没完成的合并 / 变基，请先完成或中止后再撤销", "A merge or rebase is in progress. Finish or abort it before undoing").into());
     }
     let now = snapshot(dir)?;
     let changed = e.changed_refs();
     for r in &changed {
         if now.refs.get(*r) != e.after.refs.get(*r) {
-            return Err(format!("无法撤销“{}”：{} 在那之后又变化了", e.label, short(r)).into());
+            return Err(tr!("无法撤销“{}”：{} 在那之后又变化了", "Can't undo “{}”: {} has changed since then", e.label, short(r)).into());
         }
     }
     if now.head_ref != e.after.head_ref || now.head_oid != e.after.head_oid {
-        return Err(format!("无法撤销“{}”：在那之后又切换过分支或有了新提交", e.label).into());
+        return Err(tr!("无法撤销“{}”：在那之后又切换过分支或有了新提交", "Can't undo “{}”: the branch was switched or new commits were made since then", e.label).into());
     }
 
     // 1. 先把 HEAD 恢复到原来的分支 / 提交
@@ -112,7 +113,7 @@ pub fn undo(dir: &Path, git_dir: &Path, e: &Entry) -> Result<String, Error> {
                 git(dir, &["checkout", short(b)])?;
             }
             None => {
-                let oid = e.before.head_oid.as_deref().ok_or("原来的 HEAD 不存在")?;
+                let oid = e.before.head_oid.as_deref().ok_or_else(|| tr!("原来的 HEAD 不存在", "The original HEAD no longer exists"))?;
                 git(dir, &["checkout", "--detach", oid])?;
             }
         }
@@ -138,5 +139,5 @@ pub fn undo(dir: &Path, git_dir: &Path, e: &Entry) -> Result<String, Error> {
         }
         set_ref(dir, r, e.before.refs.get(r))?;
     }
-    Ok(format!("已撤销：{}", e.label))
+    Ok(tr!("已撤销：{}", "Undone: {}", e.label))
 }

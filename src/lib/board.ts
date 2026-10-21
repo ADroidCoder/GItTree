@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { invoke } from "@tauri-apps/api/core";
 
 export type Priority = "high" | "medium" | "low" | "";
@@ -47,10 +48,10 @@ export interface Board {
 }
 
 export const PRIORITIES: { value: Priority; label: string; color: string }[] = [
-  { value: "high", label: "高", color: "#de4e4e" },
-  { value: "medium", label: "中", color: "#f2ca33" },
-  { value: "low", label: "低", color: "#15a0bf" },
-  { value: "", label: "无", color: "transparent" },
+  { value: "high", label: t("高"), color: "#de4e4e" },
+  { value: "medium", label: t("中"), color: "#f2ca33" },
+  { value: "low", label: t("低"), color: "#15a0bf" },
+  { value: "", label: t("无"), color: "transparent" },
 ];
 
 export function uid() {
@@ -61,10 +62,10 @@ export function defaultBoard(): Board {
   return {
     version: 1,
     columns: [
-      { id: "todo", name: "待办" },
-      { id: "doing", name: "进行中" },
-      { id: "review", name: "待验证" },
-      { id: "done", name: "已完成" },
+      { id: "todo", name: t("待办") },
+      { id: "doing", name: t("进行中") },
+      { id: "review", name: t("待验证") },
+      { id: "done", name: t("已完成") },
     ],
     cards: [],
     autoArchiveDays: 7,

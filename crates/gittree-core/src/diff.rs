@@ -1,5 +1,6 @@
 //! 提交详情、文件列表和逐行 diff。
 
+use crate::tr;
 use crate::log::Error;
 use git2::{Delta, Diff, DiffFindOptions, DiffOptions, Oid, Repository};
 use serde::Serialize;
@@ -253,7 +254,7 @@ pub fn hunk_patch(repo: &Repository, path: &str, staged: bool, header: &str) -> 
     }
     let delta = diff.get_delta(0).unwrap();
     if !matches!(delta.status(), Delta::Modified) {
-        return Err("只有修改过的文件才能按代码块暂存，新增或删除的文件请整个暂存".into());
+        return Err(tr!("只有修改过的文件才能按代码块暂存，新增或删除的文件请整个暂存", "Only modified files can be staged by hunk. Stage added or deleted files as a whole").into());
     }
     let Some(patch) = git2::Patch::from_diff(&diff, 0)? else { return Ok(None) };
     let file = delta.new_file().path().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();

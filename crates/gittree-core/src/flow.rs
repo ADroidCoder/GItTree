@@ -5,6 +5,7 @@
 //! 完成（finish）操作的每一步都会先检查是否已经做过，遇到冲突中断后，
 //! 用户解决冲突并提交，再执行一次完成就会从中断的地方继续。
 
+use crate::tr;
 use crate::log::Error;
 use crate::ops::git;
 use serde::{Deserialize, Serialize};
@@ -106,10 +107,10 @@ pub fn config(dir: &Path) -> FlowConfig {
 
 fn check_name(name: &str) -> Result<(), Error> {
     if name.trim().is_empty() {
-        return Err("名称不能为空".into());
+        return Err(tr!("名称不能为空", "Name can't be empty").into());
     }
     if name.chars().any(|c| c.is_whitespace() || "~^:?*[\\".contains(c)) || name.contains("..") {
-        return Err(format!("“{name}” 不能用作分支名（不能包含空格和 ~ ^ : ? * [ \\ ..）").into());
+        return Err(tr!("“{name}” 不能用作分支名（不能包含空格和 ~ ^ : ? * [ \\ ..）", "“{name}” isn't a valid branch name (no spaces or ~ ^ : ? * [ \\ ..)").into());
     }
     Ok(())
 }
@@ -118,10 +119,10 @@ pub fn init(dir: &Path, cfg: &FlowConfig) -> Result<(), Error> {
     check_name(&cfg.master)?;
     check_name(&cfg.develop)?;
     if cfg.master == cfg.develop {
-        return Err("生产分支和开发分支不能是同一个".into());
+        return Err(tr!("生产分支和开发分支不能是同一个", "The production and develop branches must be different").into());
     }
     if !branch_exists(dir, &cfg.master) {
-        return Err(format!("生产分支 {} 不存在，请先创建它（至少需要一个提交）", cfg.master).into());
+        return Err(tr!("生产分支 {} 不存在，请先创建它（至少需要一个提交）", "The production branch {} doesn't exist. Create it first (it needs at least one commit)", cfg.master).into());
     }
     for (key, value) in [
         ("gitflow.branch.master", &cfg.master),
@@ -153,7 +154,7 @@ pub fn init(dir: &Path, cfg: &FlowConfig) -> Result<(), Error> {
 fn require_initialized(dir: &Path) -> Result<FlowConfig, Error> {
     let cfg = config(dir);
     if !cfg.initialized {
-        return Err("这个仓库还没有初始化 Git Flow".into());
+        return Err(tr!("这个仓库还没有初始化 Git Flow", "Git Flow isn't initialized in this repository").into());
     }
     Ok(cfg)
 }
@@ -164,12 +165,12 @@ pub fn start(dir: &Path, kind: Kind, name: &str, base: Option<&str>) -> Result<S
     check_name(name)?;
     let branch = format!("{}{}", kind.prefix(&cfg), name.trim());
     if branch_exists(dir, &branch) {
-        return Err(format!("分支 {branch} 已经存在").into());
+        return Err(tr!("分支 {branch} 已经存在", "Branch {branch} already exists").into());
     }
     if matches!(kind, Kind::Release | Kind::Hotfix) {
         let tag = format!("{}{}", cfg.version_tag, name.trim());
         if tag_exists(dir, &tag) {
-            return Err(format!("版本标签 {tag} 已经存在，请换一个版本号").into());
+            return Err(tr!("版本标签 {tag} 已经存在，请换一个版本号", "Tag {tag} already exists. Choose another version").into());
         }
     }
     let base = base.filter(|b| !b.trim().is_empty()).unwrap_or(kind.base(&cfg));
@@ -192,11 +193,11 @@ pub struct FinishOptions {
 
 fn ensure_clean(dir: &Path, git_dir: &Path) -> Result<(), Error> {
     if git_dir.join("MERGE_HEAD").exists() {
-        return Err("还有没完成的合并，请先解决冲突并提交，然后再点一次“完成”".into());
+        return Err(tr!("还有没完成的合并，请先解决冲突并提交，然后再点一次“完成”", "A merge is still in progress. Resolve the conflicts and commit, then click “Finish” again").into());
     }
     let out = git(dir, &["status", "--porcelain", "--untracked-files=no"])?;
     if !out.trim().is_empty() {
-        return Err("有未提交的更改，请先提交或 stash 后再完成".into());
+        return Err(tr!("有未提交的更改，请先提交或 stash 后再完成", "You have uncommitted changes. Commit or stash them before finishing").into());
     }
     Ok(())
 }
@@ -204,18 +205,19 @@ fn ensure_clean(dir: &Path, git_dir: &Path) -> Result<(), Error> {
 /// 把 source（分支或标签）合并到 target，已经合并过就跳过
 fn merge_into(dir: &Path, source: &str, target: &str, is_tag: bool, steps: &mut Vec<String>) -> Result<(), Error> {
     if is_merged(dir, source, target) {
-        steps.push(format!("{source} 已经包含在 {target} 里，跳过合并"));
+        steps.push(tr!("{source} 已经包含在 {target} 里，跳过合并", "{source} is already in {target}, merge skipped"));
         return Ok(());
     }
     git(dir, &["switch", target])?;
     let msg = format!("Merge {} '{source}' into {target}", if is_tag { "tag" } else { "branch" });
     if let Err(e) = git(dir, &["merge", "--no-ff", "-m", &msg, source]) {
-        return Err(format!(
-            "把 {source} 合并到 {target} 时出现冲突。\n请解决冲突并提交，然后再点一次“完成”，已完成的步骤会自动跳过。\n\n{e}"
+        return Err(tr!(
+            "把 {source} 合并到 {target} 时出现冲突。\n请解决冲突并提交，然后再点一次“完成”，已完成的步骤会自动跳过。\n\n{e}",
+            "Merging {source} into {target} caused conflicts.\nResolve them and commit, then click “Finish” again. Completed steps are skipped automatically.\n\n{e}"
         )
         .into());
     }
-    steps.push(format!("已把 {source} 合并到 {target}"));
+    steps.push(tr!("已把 {source} 合并到 {target}", "Merged {source} into {target}"));
     Ok(())
 }
 
@@ -224,7 +226,7 @@ pub fn finish(dir: &Path, git_dir: &Path, kind: Kind, name: &str, opts: &FinishO
     let cfg = require_initialized(dir)?;
     let branch = format!("{}{}", kind.prefix(&cfg), name.trim());
     if !branch_exists(dir, &branch) {
-        return Err(format!("分支 {branch} 不存在").into());
+        return Err(tr!("分支 {branch} 不存在", "Branch {branch} doesn't exist").into());
     }
     ensure_clean(dir, git_dir)?;
     let mut steps = Vec::new();
@@ -236,12 +238,12 @@ pub fn finish(dir: &Path, git_dir: &Path, kind: Kind, name: &str, opts: &FinishO
             merge_into(dir, &branch, &cfg.master, false, &mut steps)?;
             let tag = format!("{}{}", cfg.version_tag, name.trim());
             if tag_exists(dir, &tag) {
-                steps.push(format!("标签 {tag} 已存在，跳过"));
+                steps.push(tr!("标签 {tag} 已存在，跳过", "Tag {tag} already exists, skipped"));
             } else {
                 let default_msg = format!("{} {}", if kind == Kind::Release { "Release" } else { "Hotfix" }, name.trim());
                 let msg = opts.tag_message.as_deref().filter(|m| !m.trim().is_empty()).unwrap_or(&default_msg);
                 git(dir, &["tag", "-a", &tag, &cfg.master, "-m", msg])?;
-                steps.push(format!("已创建标签 {tag}"));
+                steps.push(tr!("已创建标签 {tag}", "Created tag {tag}"));
             }
             // 和 git-flow 一样把版本标签合并回 develop，这样 develop 也包含打了标签的提交
             merge_into(dir, &tag, &cfg.develop, true, &mut steps)?;
@@ -254,15 +256,15 @@ pub fn finish(dir: &Path, git_dir: &Path, kind: Kind, name: &str, opts: &FinishO
     git(dir, &["switch", &cfg.develop])?;
     if !opts.keep_branch {
         git(dir, &["branch", "-d", &branch])?;
-        steps.push(format!("已删除分支 {branch}"));
+        steps.push(tr!("已删除分支 {branch}", "Deleted branch {branch}"));
     }
     if opts.push {
         let mut args = vec!["push", "--progress", "origin"];
         args.extend(push_refs.iter().map(String::as_str));
         git(dir, &args)?;
-        steps.push(format!("已推送 {}", push_refs.join("、")));
+        steps.push(tr!("已推送 {}", "Pushed {}", push_refs.join(if crate::english() { ", " } else { "、" })));
     }
-    Ok(format!("{} {} 已完成：\n{}", kind.label(), name.trim(), steps.join("\n")))
+    Ok(tr!("{} {} 已完成：\n{}", "Finished {} {}:\n{}", kind.label(), name.trim(), steps.join("\n")))
 }
 
 /// 把分支推送到 origin 并设置跟踪，方便别人协作
@@ -270,5 +272,5 @@ pub fn publish(dir: &Path, kind: Kind, name: &str) -> Result<String, Error> {
     let cfg = require_initialized(dir)?;
     let branch = format!("{}{}", kind.prefix(&cfg), name.trim());
     git(dir, &["push", "--progress", "-u", "origin", &branch])?;
-    Ok(format!("已推送 {branch} 到 origin"))
+    Ok(tr!("已推送 {branch} 到 origin", "Pushed {branch} to origin"))
 }

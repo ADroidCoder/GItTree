@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { api, type CommitDetails } from "../lib/api";
   import { errorText, openIn, toast, type RepoTab } from "../lib/store.svelte";
   import { avatarColor, formatDate, initials } from "../lib/util";
@@ -61,9 +62,9 @@
   async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text);
-      toast("已复制");
+      toast(t("已复制"));
     } catch {
-      toast("复制失败", "error");
+      toast(t("复制失败"), "error");
     }
   }
 </script>
@@ -81,20 +82,20 @@
         <span class="avatar" style="background:{avatarColor(details.author.email)}">{initials(details.author.name)}</span>
         <div>
           <div class="pname">{details.author.name} <span class="email">&lt;{details.author.email}&gt;</span></div>
-          <div class="when">创作于 {formatDate(details.author.time)}</div>
+          <div class="when">{t("创作于 {0}", formatDate(details.author.time))}</div>
           {#if details.committer.name !== details.author.name || details.committer.time !== details.author.time}
-            <div class="when">由 {details.committer.name} 提交于 {formatDate(details.committer.time)}</div>
+            <div class="when">{t("由 {0} 提交于 {1}", details.committer.name, formatDate(details.committer.time))}</div>
           {/if}
         </div>
       </div>
       <div class="ids">
         <div>
-          <span class="label">提交</span>
-          <button class="link mono" onclick={() => copy(details!.oid)} title="点击复制">{details.oid.slice(0, 10)}</button>
+          <span class="label">{t("提交")}</span>
+          <button class="link mono" onclick={() => copy(details!.oid)} title={t("点击复制")}>{details.oid.slice(0, 10)}</button>
         </div>
         {#if details.parents.length}
           <div>
-            <span class="label">{details.parents.length > 1 ? "父提交（合并）" : "父提交"}</span>
+            <span class="label">{details.parents.length > 1 ? t("父提交（合并）") : t("父提交")}</span>
             {#each details.parents as p (p)}
               <button class="link mono" onclick={() => tab.jumpToOid(p)}>{p.slice(0, 7)}</button>
             {/each}
@@ -103,10 +104,10 @@
       </div>
     </div>
     <div class="files-head">
-      <span>{details.files.length} 个文件改动</span>
+      <span>{t("{0} 个文件改动", details.files.length)}</span>
       <span class="add">+{totals.a}</span>
       <span class="del">-{totals.d}</span>
-      <button class="view-toggle" onclick={() => (treeView = !treeView)}>{treeView ? "列表" : "目录树"}</button>
+      <button class="view-toggle" onclick={() => (treeView = !treeView)}>{treeView ? t("列表") : t("目录树")}</button>
     </div>
     <div class="files">
       <FileList
@@ -128,20 +129,20 @@
             x: e.clientX,
             y: e.clientY,
             items: [
-              { label: "查看改动", action: () => (tab.diff = { source: "commit", oid, path: f.path, oldPath: f.oldPath }) },
+              { label: t("查看改动"), action: () => (tab.diff = { source: "commit", oid, path: f.path, oldPath: f.oldPath }) },
               "sep",
-              { label: "文件历史", action: () => tab.openFile(f.path, "history") },
-              { label: "Blame 这个版本", disabled: f.status === "D", action: () => tab.openFile(f.path, "blame", oid) },
-              { label: "用编辑器打开（工作区里的版本）", action: () => openIn(tab, "editor", f.path) },
+              { label: t("文件历史"), action: () => tab.openFile(f.path, "history") },
+              { label: t("Blame 这个版本"), disabled: f.status === "D", action: () => tab.openFile(f.path, "blame", oid) },
+              { label: t("用编辑器打开（工作区里的版本）"), action: () => openIn(tab, "editor", f.path) },
               "sep",
-              { label: "复制路径", action: () => navigator.clipboard.writeText(f.path) },
+              { label: t("复制路径"), action: () => navigator.clipboard.writeText(f.path) },
             ],
           };
         }}
       />
     </div>
   {:else}
-    <div class="loading">加载中…</div>
+    <div class="loading">{t("加载中…")}</div>
   {/if}
 </div>
 

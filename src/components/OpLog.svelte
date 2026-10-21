@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { elapsed, type RepoTab } from "../lib/store.svelte";
 
   let { tab }: { tab: RepoTab } = $props();
@@ -21,15 +22,15 @@
 
   /** git 进度阶段的中文说明 */
   const STAGES: Record<string, string> = {
-    "Enumerating objects": "枚举对象",
-    "Counting objects": "统计对象",
-    "Compressing objects": "压缩对象",
-    "Receiving objects": "接收对象",
-    "Resolving deltas": "解析差异",
-    "Writing objects": "上传对象",
-    "Updating files": "更新文件",
-    "Checking connectivity": "检查完整性",
-    "Unpacking objects": "解包对象",
+    "Enumerating objects": t("枚举对象"),
+    "Counting objects": t("统计对象"),
+    "Compressing objects": t("压缩对象"),
+    "Receiving objects": t("接收对象"),
+    "Resolving deltas": t("解析差异"),
+    "Writing objects": t("上传对象"),
+    "Updating files": t("更新文件"),
+    "Checking connectivity": t("检查完整性"),
+    "Unpacking objects": t("解包对象"),
   };
 
   let scroller = $state<HTMLDivElement>();
@@ -63,15 +64,15 @@
           <div class="bar"><div style="width:{parsed.percent}%"></div></div>
         {/if}
       </div>
-      <button class="small" onclick={() => (tab.logOpen = !tab.logOpen)}>{tab.logOpen ? "收起" : "日志"}</button>
-      {#if tab.cancellable}<button class="small" onclick={() => tab.cancel()}>取消</button>{/if}
+      <button class="small" onclick={() => (tab.logOpen = !tab.logOpen)}>{tab.logOpen ? t("收起") : t("日志")}</button>
+      {#if tab.cancellable}<button class="small" onclick={() => tab.cancel()}>{t("取消")}</button>{/if}
     </div>
   {:else}
     <div class="head">
-      <div class="info"><div class="title">输出日志</div></div>
-      <button class="small" onclick={copy}>复制</button>
-      <button class="small" onclick={() => (tab.log = [])}>清空</button>
-      <button class="small" onclick={() => (tab.logOpen = false)}>关闭</button>
+      <div class="info"><div class="title">{t("输出日志")}</div></div>
+      <button class="small" onclick={copy}>{t("复制")}</button>
+      <button class="small" onclick={() => (tab.log = [])}>{t("清空")}</button>
+      <button class="small" onclick={() => (tab.logOpen = false)}>{t("关闭")}</button>
     </div>
   {/if}
   {#if tab.logOpen}
@@ -79,7 +80,7 @@
       {#each tab.log as l, i (i)}
         <div class="l {l.kind ?? ''}">{l.text}</div>
       {:else}
-        <div class="l empty">还没有输出</div>
+        <div class="l empty">{t("还没有输出")}</div>
       {/each}
     </div>
   {/if}

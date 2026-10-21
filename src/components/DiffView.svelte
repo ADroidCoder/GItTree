@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import type { DiffLine, FileDiff } from "../lib/api";
   import { confirm, errorText, type DiffTarget, type RepoTab } from "../lib/store.svelte";
 
@@ -115,7 +116,7 @@
 
   async function hunkAction(header: string, action: "stage" | "unstage" | "discard") {
     if (action === "discard") {
-      if (!(await confirm("丢弃代码块", "确定丢弃这个代码块的改动吗？此操作无法撤销。", "丢弃", true))) return;
+      if (!(await confirm(t("丢弃代码块"), t("确定丢弃这个代码块的改动吗？此操作无法撤销。"), t("丢弃"), true))) return;
       await tab.run({ op: "discard_hunk", path: target.path, header });
     } else {
       await tab.run({ op: "stage_hunk", path: target.path, header, staged: action === "unstage" });
@@ -137,7 +138,7 @@
       {/if}
       <span class="path">{target.path}</span>
       {#if target.source === "workdir"}
-        <span class="tag">{target.staged ? "已暂存" : "未暂存"}</span>
+        <span class="tag">{target.staged ? t("已暂存") : t("未暂存")}</span>
       {:else if target.oid}
         <span class="tag mono">{target.oid.slice(0, 7)}</span>
       {/if}
@@ -146,26 +147,26 @@
     </div>
     <div class="actions">
       {#if !embedded}
-        <button onclick={() => tab.openFile(target.path, "history")} title="查看修改过这个文件的所有提交">历史</button>
+        <button onclick={() => tab.openFile(target.path, "history")} title={t("查看修改过这个文件的所有提交")}>{t("历史")}</button>
         <button
           onclick={() => tab.openFile(target.path, "blame", target.source === "commit" ? target.oid! : null)}
-          title="逐行查看是谁在哪次提交里改的">Blame</button
+          title={t("逐行查看是谁在哪次提交里改的")}>Blame</button
         >
       {/if}
-      <button onclick={toggleSplit}>{split ? "上下对比" : "左右对比"}</button>
-      {#if !embedded}<button onclick={onClose} title="关闭 (Esc)">✕</button>{/if}
+      <button onclick={toggleSplit}>{split ? t("上下对比") : t("左右对比")}</button>
+      {#if !embedded}<button onclick={onClose} title={t("关闭 (Esc)")}>✕</button>{/if}
     </div>
   </div>
   {#if error}
     <div class="msg error">{error}</div>
   {:else if loading && !diff}
-    <div class="msg">加载中…</div>
+    <div class="msg">{t("加载中…")}</div>
   {:else if !diff}
-    <div class="msg">没有改动</div>
+    <div class="msg">{t("没有改动")}</div>
   {:else if diff.binary}
-    <div class="msg">二进制文件，无法显示差异</div>
+    <div class="msg">{t("二进制文件，无法显示差异")}</div>
   {:else if diff.hunks.length === 0}
-    <div class="msg">没有文本改动（可能只是文件权限变化）</div>
+    <div class="msg">{t("没有文本改动（可能只是文件权限变化）")}</div>
   {:else}
     <div
       class="scroller"
@@ -182,10 +183,10 @@
                 {#if canStageHunk}
                   <span class="hunk-actions">
                     {#if target.staged}
-                      <button onclick={() => hunkAction(it.header, "unstage")}>取消暂存代码块</button>
+                      <button onclick={() => hunkAction(it.header, "unstage")}>{t("取消暂存代码块")}</button>
                     {:else}
-                      <button onclick={() => hunkAction(it.header, "stage")}>暂存代码块</button>
-                      <button class="danger" onclick={() => hunkAction(it.header, "discard")}>丢弃</button>
+                      <button onclick={() => hunkAction(it.header, "stage")}>{t("暂存代码块")}</button>
+                      <button class="danger" onclick={() => hunkAction(it.header, "discard")}>{t("丢弃")}</button>
                     {/if}
                   </span>
                 {/if}
@@ -212,7 +213,7 @@
           {/each}
         </div>
         {#if diff.truncated && end >= items.length}
-          <div class="truncated" style="top:{items.length * LINE_H}px">文件改动太多，只显示了前 20000 行</div>
+          <div class="truncated" style="top:{items.length * LINE_H}px">{t("文件改动太多，只显示了前 20000 行")}</div>
         {/if}
       </div>
     </div>

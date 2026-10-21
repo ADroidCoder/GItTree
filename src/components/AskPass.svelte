@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
   import { api } from "../lib/api";
   import { app } from "../lib/store.svelte";
 
@@ -43,20 +44,20 @@
 <div class="overlay" onkeydown={onKey}>
   <div class="dialog" role="dialog" aria-modal="true">
     {#if kind === "confirm"}
-      <div class="title">确认连接</div>
+      <div class="title">{t("确认连接")}</div>
       <pre class="prompt">{req.prompt}</pre>
-      <div class="hint">第一次连接这台服务器时 SSH 会让你确认它的身份。如果是你常用的代码托管网站（如 GitHub、Gitee），一般选“信任”即可。</div>
+      <div class="hint">{t("第一次连接这台服务器时 SSH 会让你确认它的身份。如果是你常用的代码托管网站（如 GitHub、Gitee），一般选“信任”即可。")}</div>
       <div class="buttons">
-        <button onclick={() => reply("no")}>不信任</button>
-        <button class="primary" onclick={() => reply("yes")}>信任并继续</button>
+        <button onclick={() => reply("no")}>{t("不信任")}</button>
+        <button class="primary" onclick={() => reply("yes")}>{t("信任并继续")}</button>
       </div>
     {:else}
       <div class="title">
-        {kind === "username" ? "需要登录" : kind === "passphrase" ? "输入 SSH 密钥密码" : kind === "password" ? "需要密码" : "需要输入"}
+        {kind === "username" ? t("需要登录") : kind === "passphrase" ? t("输入 SSH 密钥密码") : kind === "password" ? t("需要密码") : t("需要输入")}
       </div>
-      <div class="prompt-line">{host ? `正在连接 ${host}` : req.prompt}</div>
+      <div class="prompt-line">{host ? t("正在连接 {0}", host) : req.prompt}</div>
       <label for="askpass-input">
-        {kind === "username" ? "用户名" : kind === "passphrase" ? "密钥密码" : kind === "password" ? (isGithub ? "Token" : "密码或令牌") : req.prompt}
+        {kind === "username" ? t("用户名") : kind === "passphrase" ? t("密钥密码") : kind === "password" ? (isGithub ? "Token" : t("密码或令牌")) : req.prompt}
       </label>
       <input
         id="askpass-input"
@@ -68,18 +69,17 @@
       />
       {#if kind === "password" && isGithub}
         <div class="hint">
-          GitHub 已经不支持用账号密码推送，请填写 Personal Access Token。在 GitHub → Settings → Developer settings →
-          Personal access tokens 里生成，至少需要仓库的 Contents 读写权限。
+          {t("GitHub 已经不支持用账号密码推送，请填写 Personal Access Token。在 GitHub → Settings → Developer settings → Personal access tokens 里生成，至少需要仓库的 Contents 读写权限。")}
         </div>
       {:else if kind === "password" && isGitee}
-        <div class="hint">可以填 Gitee 登录密码，也可以填在 Gitee → 设置 → 私人令牌 里生成的令牌。</div>
+        <div class="hint">{t("可以填 Gitee 登录密码，也可以填在 Gitee → 设置 → 私人令牌 里生成的令牌。")}</div>
       {:else if kind === "passphrase"}
         <div class="hint">{req.prompt}</div>
       {/if}
-      {#if kind !== "text"}<div class="hint">验证成功后 git 会用系统的凭据管理器记住，下次不用再填。</div>{/if}
+      {#if kind !== "text"}<div class="hint">{t("验证成功后 git 会用系统的凭据管理器记住，下次不用再填。")}</div>{/if}
       <div class="buttons">
-        <button onclick={() => reply(null)}>取消</button>
-        <button class="primary" onclick={() => reply(value)}>确定</button>
+        <button onclick={() => reply(null)}>{t("取消")}</button>
+        <button class="primary" onclick={() => reply(value)}>{t("确定")}</button>
       </div>
     {/if}
   </div>
