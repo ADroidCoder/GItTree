@@ -1,6 +1,6 @@
 [package]
 name = "gittree"
-version = "0.2.0"
+version = "0.3.0"
 description = "高性能 Git 桌面客户端"
 edition = "2024"
 license = "Apache-2.0"
@@ -14,10 +14,11 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 gittree-core = { path = "../crates/gittree-core" }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
 notify = "8"
 serde.workspace = true
 serde_json.workspace = true
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-notification = "2"

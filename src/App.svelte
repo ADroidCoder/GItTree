@@ -19,6 +19,9 @@
   import AskPass from "./components/AskPass.svelte";
   import UpdateDialog from "./components/UpdateDialog.svelte";
   import { startUpdater, updater } from "./lib/updater.svelte";
+  import NotifyDialog from "./components/NotifyDialog.svelte";
+  import CommandPalette from "./components/CommandPalette.svelte";
+  import { notifyDialog, startNotifier } from "./lib/notify.svelte";
 
   let toolbar = $state<ReturnType<typeof Toolbar>>();
   const tab = $derived(activeTab());
@@ -31,6 +34,7 @@
   onMount(() => {
     syncBackendLang();
     startUpdater();
+    startNotifier();
     // 恢复上次打开的标签页；命令行指定的仓库额外打开
     api.initialRepo().then((p) => restoreTabs(p));
     preloadTasks();
@@ -56,10 +60,16 @@
     return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
   }
 
+  let paletteOpen = $state(false);
+
   function onGlobalKey(e: KeyboardEvent) {
     const mod = isMac ? e.metaKey : e.ctrlKey;
     const key = e.key.toLowerCase();
-    if (mod && key === "f") {
+    if (mod && (key === "k" || (key === "p" && e.shiftKey))) {
+      // ⌘K / ⌘⇧P 命令面板
+      e.preventDefault();
+      paletteOpen = !paletteOpen;
+    } else if (mod && key === "f") {
       e.preventDefault();
       toolbar?.focusSearch();
     } else if ((mod && key === "r") || e.key === "F5") {
@@ -117,6 +127,12 @@
 </div>
 {#if app.askpass.length}
   <AskPass />
+{/if}
+{#if paletteOpen}
+  <CommandPalette {toolbar} onOpenFolder={openFolder} onClose={() => (paletteOpen = false)} />
+{/if}
+{#if notifyDialog.open}
+  <NotifyDialog />
 {/if}
 {#if updater.open && updater.update}
   <UpdateDialog />

@@ -74,6 +74,8 @@ Get the latest installer from the [**Releases page**](https://github.com/ADroidC
 - **Git Flow** — start and finish feature / bugfix / release / hotfix branches from one panel. Compatible with the `git flow` CLI and SourceTree configuration.
 
 ### App
+- **Command palette** (⌘K / Ctrl+K) — run any command, switch branches, check out remote branches, jump to tags or open repositories by typing a few letters.
+- **Reminders and notifications** — recurring reminders such as “drink water every hour” or “stand up every two hours” within your working hours, daily reminders for tasks that are due or overdue, and notifications when a long push / pull / clone finishes or new commits arrive on your branch. Optionally keeps running in the menu bar / system tray after the window is closed.
 - **English and Chinese UI** — follows the system language; switch any time in Settings (⚙).
 - **Automatic updates** — GitTree checks GitHub Releases in the background and installs new versions in one click. Updates are signed and verified before installing.
 
@@ -86,6 +88,7 @@ On Windows, use Ctrl instead of ⌘.
 
 | Shortcut | Action |
 |---|---|
+| ⌘K / ⌘⇧P | Command palette |
 | ⌘O / ⌘T | Open a repository in a new tab |
 | ⌘1 – ⌘9 | Switch to tab N |
 | ⌘F | Search commits (Enter / Shift+Enter for next / previous) |

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { savedLang, setLang, t, type Lang } from "../lib/i18n";
   import { checkUpdate, updater } from "../lib/updater.svelte";
+  import { notifyDialog } from "../lib/notify.svelte";
   import { api } from "../lib/api";
   import { app, chooseEditor, dialog, errorText, openFlow, openIn, setAutoFetch, setTheme, toast, type RepoTab, type Theme } from "../lib/store.svelte";
   import { isMac } from "../lib/util";
@@ -68,6 +69,7 @@
           action: () => changeLang(l.value),
         })),
         "sep",
+        { label: t("提醒与通知…"), action: () => (notifyDialog.open = true) },
         {
           label: updater.update ? t("安装新版本 {0}…", updater.update.version) : t("检查更新…"),
           hint: updater.version ? `v${updater.version}` : undefined,
@@ -115,7 +117,7 @@
     return { x: r.left, y: r.bottom + 4 };
   }
 
-  async function newBranch() {
+  export async function newBranch() {
     if (!tab) return;
     const start = tab.selectedOid ?? "HEAD";
     const r = await dialog({
@@ -128,7 +130,7 @@
     if (r?.input.trim()) await tab.run({ op: "create_branch", name: r.input.trim(), start, checkout: r.checkbox }, t("正在创建分支…"));
   }
 
-  async function stash() {
+  export async function stash() {
     if (!tab) return;
     const r = await dialog({
       title: t("暂存工作区 (Stash)"),

@@ -1,5 +1,6 @@
 import { t } from "./i18n";
 import { autoArchive, loadTasks, saveTasks, type Board } from "./board";
+import { notifyInBackground, notifySettings } from "./notify.svelte";
 import { api, type AskPassRequest, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type RepoInfo, type Stash, type Status } from "./api";
 
 export interface DiffTarget {
@@ -52,6 +53,21 @@ let tabSeq = 0;
 
 /** 联网的操作，可能很慢，允许取消 */
 const NETWORK_OPS = new Set<string>(["fetch", "pull", "push", "flow_publish"]);
+
+/** 通知里用的操作名 */
+function opName(op: Op["op"]) {
+  const names: Partial<Record<Op["op"], string>> = {
+    fetch: t("获取"),
+    pull: t("拉取"),
+    push: t("推送"),
+    flow_publish: t("推送"),
+    flow_finish: t("Git Flow 完成"),
+    merge: t("合并"),
+    rebase: t("变基"),
+    rebase_interactive: t("交互式变基"),
+  };
+  return names[op] ?? t("操作");
+}
 
 /** 进度行冒号前面的部分就是阶段名 */
 const stage = (text: string) => text.replace(/^remote:\s*/, "").split(":")[0];
@@ -290,11 +306,13 @@ export class RepoTab {
     try {
       const out = await api.gitOp(this.id, op);
       if (label) this.addLog({ text: t("✓ 完成，用时 {0}", elapsed(this.busySince)), transient: false, kind: "ok" });
+      if (label && this.notifyDone()) notifyInBackground(this.name, t("{0}完成", opName(op.op)));
       if (label && out.trim()) toast(out.trim().split("\n").slice(-8).join("\n"));
       return true;
     } catch (e) {
       this.addLog({ text: `✗ ${errorText(e)}`, transient: false, kind: "err" });
       toast(errorText(e), "error");
+      if (label && this.notifyDone()) notifyInBackground(this.name, t("{0}失败：{1}", opName(op.op), errorText(e).split("\n")[0]));
       await this.refresh();
       this.showConflicts();
       return false;
@@ -308,6 +326,16 @@ export class RepoTab {
       await this.refresh();
       if (label) this.busy = null;
     }
+  }
+
+  /** 耗时超过几秒的操作才通知，快的操作不打扰 */
+  private notifyDone() {
+    return notifySettings.gitOps && Date.now() - this.busySince > 4000;
+  }
+
+  /** 当前分支落后远程几个提交 */
+  private behind() {
+    return this.repo?.refs.find((r) => r.is_head && r.kind === "local")?.behind ?? 0;
   }
 
   /** 操作因为冲突停下来时，切到工作区并打开第一个冲突文件 */
@@ -343,8 +371,13 @@ export class RepoTab {
     this.autoFetching = (async () => {
       this.addLog({ text: t("—— 自动获取 · {0}", new Date().toLocaleTimeString()), transient: false, kind: "ok" });
       try {
+        const before = this.behind();
         await api.gitOp(this.id, { op: "fetch", quiet: true });
         await this.refresh();
+        const added = this.behind() - before;
+        const branch = this.repo?.head.branch;
+        if (added > 0 && branch && notifySettings.remoteCommits)
+          notifyInBackground(this.name, t("{0} 在远程有 {1} 个新提交，可以拉取了", branch, added));
       } catch (e) {
         this.addLog({ text: `✗ ${errorText(e)}`, transient: false, kind: "err" });
       } finally {

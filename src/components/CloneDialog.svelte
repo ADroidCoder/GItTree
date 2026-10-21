@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "../lib/i18n";
+  import { notifyInBackground, notifySettings } from "../lib/notify.svelte";
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -92,6 +93,7 @@
     try {
       if (mode === "clone") {
         const path = await api.cloneRepo(url, parent, name);
+        if (notifySettings.gitOps) notifyInBackground(t("克隆完成"), path);
         close();
         await openRepo(path);
       } else {

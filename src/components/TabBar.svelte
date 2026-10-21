@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t } from "../lib/i18n";
   import { updater } from "../lib/updater.svelte";
+  import { overdueCount } from "../lib/notify.svelte";
   import { activate, app, closeTab, showTasks } from "../lib/store.svelte";
   import { isMac } from "../lib/util";
   import RepoPicker from "./RepoPicker.svelte";
@@ -18,7 +19,8 @@
     {#if app.tasks}
       {@const last = app.tasks.columns[app.tasks.columns.length - 1]?.id}
       {@const open = app.tasks.cards.filter((c) => c.column !== last && !c.archived).length}
-      {#if open}<span class="pcount">{open}</span>{/if}
+      {@const late = overdueCount()}
+      {#if open}<span class="pcount" class:late title={late ? t("{0} 个任务已经逾期", late) : undefined}>{open}</span>{/if}
     {/if}
   </button>
   <span class="divider"></span>
@@ -175,6 +177,10 @@
     color: var(--text);
     margin-bottom: -1px;
     height: 32px;
+  }
+  .pcount.late {
+    background: var(--del);
+    color: #fff;
   }
   .pcount {
     padding: 0 6px;

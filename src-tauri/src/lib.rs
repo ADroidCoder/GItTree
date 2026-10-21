@@ -1,4 +1,5 @@
 mod askpass;
+mod background;
 
 use gittree_core::tr;
 use gittree_core::gix::{self, ObjectId};
@@ -839,6 +840,16 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
+        .on_window_event(|w, e| {
+            // 开着后台运行时，关窗口只是隐藏，定时提醒照常发
+            if let tauri::WindowEvent::CloseRequested { api, .. } = e
+                && background::keep_running()
+            {
+                api.prevent_close();
+                let _ = w.hide();
+            }
+        })
         .setup(|app| {
             ops::set_extra_env(askpass::start(app.handle().clone()));
             Ok(())
@@ -853,6 +864,7 @@ pub fn run() {
             cancel_op,
             undo_last,
             askpass::askpass_reply,
+            background::set_keep_running,
             clone_repo,
             init_repo,
             rebase_plan,
@@ -875,8 +887,15 @@ pub fn run() {
             tasks_save,
             initial_repo,
         ])
-        .run(tauri::generate_context!())
-        .expect("启动失败");
+        .build(tauri::generate_context!())
+        .expect("启动失败")
+        .run(|_app, _e| {
+            // macOS 上窗口隐藏后点程序坞图标，把窗口显示回来
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _e {
+                background::show_main(_app);
+            }
+        });
 }
 
 /// 从访达 / 程序坞启动时，macOS 只给最基本的 PATH，找不到 Homebrew 装的 git 和编辑器命令。

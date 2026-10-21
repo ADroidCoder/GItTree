@@ -4,6 +4,7 @@
   import { app, confirm, dialog, saveTasksSoon, toast } from "../lib/store.svelte";
   import { avatarColor, initials } from "../lib/util";
   import TaskArchive from "./TaskArchive.svelte";
+  import { notifyDialog } from "../lib/notify.svelte";
   import TaskEditor from "./TaskEditor.svelte";
 
   /** 已完成列默认只显示最近这么多个，其余的折叠起来 */
@@ -196,6 +197,7 @@
       {#each repos as r (r)}<option value={r}>{repoName(r)}</option>{/each}
     </select>
     <span class="grow"></span>
+    <button onclick={() => (notifyDialog.open = true)} title={t("定时提醒、任务到期提醒等设置")}>{t("⏰ 提醒")}</button>
     <button class:on={showArchive} onclick={() => (showArchive = !showArchive)} title={t("查看、搜索和恢复归档的任务")}>
       {t("▤ 归档")}{#if archivedCount}<span class="acount">{archivedCount}</span>{/if}
     </button>
