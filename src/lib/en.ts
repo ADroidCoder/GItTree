@@ -379,6 +379,34 @@ const en: Record<string, string> = {
   "正在打开 {0}…": "Opening {0}…",
   选择一个提交查看详情: "Select a commit to see its details",
 
+  "重命名…": "Rename…",
+  重命名分支: "Rename branch",
+  "{0} 跟踪着远程分支 {1}": "{0} tracks the remote branch {1}",
+  新的分支名称: "New branch name",
+  "同时重命名远程分支（推送新名字，删除远程的旧名字）": "Also rename the remote branch (push the new name and delete the old one)",
+  "正在重命名并推送…": "Renaming and pushing…",
+  "正在重命名…": "Renaming…",
+
+  "没有检出分支，无法推送": "No branch is checked out, nothing to push",
+  强制推送: "Force push",
+  "用本地的 {0} 覆盖远程分支？\n远程上有、本地没有的提交会被丢掉。\n如果在你上次获取之后别人又推送了新提交，这次推送会失败，不会覆盖别人的提交（--force-with-lease）。":
+    "Overwrite the remote branch with your local {0}?\nCommits that exist only on the remote will be discarded.\nIf someone else pushed after your last fetch, this push fails instead of overwriting their work (--force-with-lease).",
+  "正在强制推送…": "Force pushing…",
+  推送被拒绝: "Push rejected",
+  "远程分支上有你本地没有的提交。\n· 如果是别人推送了新提交：请先拉取，再推送。\n· 如果是你刚变基或修改过已经推送的提交，确定要用本地覆盖远程：可以强制推送。":
+    "The remote branch has commits you don't have locally.\n· If someone else pushed: pull first, then push.\n· If you just rebased or amended commits you had already pushed and want to overwrite the remote: force push.",
+  "强制推送…": "Force push…",
+  更多推送选项: "More push options",
+
+  全部分支: "All branches",
+  "搜索分支，点名称只看这个，勾选可以多选": "Search; click a name to show only it, tick to pick several",
+  只看这个分支: "Show only this branch",
+  "还有 {0} 个分支没有列出，输入关键字筛选": "{0} more branch not listed — type to filter||{0} more branches not listed — type to filter",
+  "已选 {0} 个分支": "{0} branch selected||{0} branches selected",
+  勾选多个分支一起看: "Tick several branches to view together",
+  选择在提交图里显示哪些分支: "Choose which branches to show in the graph",
+  "{0} 个分支": "{0} branch||{0} branches",
+
   // ---------- 侧边栏 ----------
   "领先上游 {0} 个提交": "{0} commit ahead of upstream||{0} commits ahead of upstream",
   "落后上游 {0} 个提交": "{0} commit behind upstream||{0} commits behind upstream",

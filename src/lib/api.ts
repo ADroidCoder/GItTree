@@ -166,6 +166,7 @@ export type Op =
   | { op: "create_branch"; name: string; start: string; checkout: boolean }
   | { op: "delete_branch"; name: string; force: boolean }
   | { op: "delete_remote_branch"; name: string }
+  | { op: "rename_branch"; old: string; new: string; remote: boolean }
   | { op: "merge"; target: string }
   | { op: "rebase"; onto: string }
   | { op: "sequencer"; kind: string; action: "abort" | "continue" }

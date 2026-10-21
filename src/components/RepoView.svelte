@@ -55,6 +55,21 @@
     if (m) await tab.run({ op: "create_tag", name: r.input.trim(), oid, message: m.input || null });
   }
 
+  async function renameBranch(r: RefInfo) {
+    const d = await dialog({
+      title: t("重命名分支"),
+      message: r.upstream ? t("{0} 跟踪着远程分支 {1}", r.name, r.upstream) : undefined,
+      input: { placeholder: t("新的分支名称"), value: r.name },
+      // 有上游时才问要不要连远程一起改
+      checkbox: r.upstream ? { label: t("同时重命名远程分支（推送新名字，删除远程的旧名字）"), value: false } : undefined,
+      confirmText: t("重命名分支"),
+    });
+    const name = d?.input.trim();
+    if (!d || !name || name === r.name) return;
+    const remote = !!r.upstream && d.checkbox;
+    await tab.run({ op: "rename_branch", old: r.name, new: name, remote }, remote ? t("正在重命名并推送…") : t("正在重命名…"));
+  }
+
   async function checkoutRemote(r: RefInfo) {
     const short = r.name.slice(r.name.indexOf("/") + 1);
     const existing = tab.repo?.refs.find((x) => x.kind === "local" && x.name === short);
@@ -127,6 +142,7 @@
         { label: t("从这里新建分支…"), action: () => createBranchAt(r.name, r.name) },
         { label: t("复制分支名"), action: () => copy(r.name) },
         "sep",
+        { label: t("重命名…"), action: () => renameBranch(r) },
         { label: t("删除分支 {0}…", r.name), danger: true, disabled: r.is_head, action: () => deleteBranch(r) },
       );
     } else if (r.kind === "remote") {

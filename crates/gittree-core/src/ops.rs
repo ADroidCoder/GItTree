@@ -429,6 +429,34 @@ pub fn delete_branch(dir: &Path, name: &str, force: bool) -> Result<(), Error> {
     Ok(())
 }
 
+/// 分支跟踪的远程分支：(远程名, 远程上的分支名)
+fn tracking(dir: &Path, branch: &str) -> Option<(String, String)> {
+    let remote = git(dir, &["config", "--get", &format!("branch.{branch}.remote")]).ok()?;
+    let merge = git(dir, &["config", "--get", &format!("branch.{branch}.merge")]).ok()?;
+    let (remote, merge) = (remote.trim(), merge.trim());
+    // 跟踪的是本地另一个分支（remote 为 .）时不算
+    if remote.is_empty() || remote == "." {
+        return None;
+    }
+    Some((remote.to_string(), merge.strip_prefix("refs/heads/").unwrap_or(merge).to_string()))
+}
+
+/// 重命名本地分支。remote 为 true 且分支有上游时，远程分支也改名：
+/// 推送新名字并设为上游，再删掉远程的旧名字
+pub fn rename_branch(dir: &Path, old: &str, new: &str, remote: bool) -> Result<String, Error> {
+    let upstream = if remote { tracking(dir, old) } else { None };
+    git(dir, &["branch", "-m", old, new])?;
+    let Some((r, old_remote)) = upstream else {
+        return Ok(String::new());
+    };
+    git(dir, &["push", "--progress", "-u", &r, &format!("{new}:refs/heads/{new}")])?;
+    git(dir, &["push", "--progress", &r, "--delete", &old_remote])?;
+    Ok(tr!(
+        "已把远程分支 {r}/{old_remote} 改名为 {r}/{new}",
+        "Renamed the remote branch {r}/{old_remote} to {r}/{new}"
+    ))
+}
+
 /// 删除远程分支，例如 origin/feature
 pub fn delete_remote_branch(dir: &Path, remote_branch: &str) -> Result<(), Error> {
     let (remote, branch) = remote_branch.split_once('/').ok_or_else(|| tr!("远程分支名称格式不对", "Invalid remote branch name"))?;

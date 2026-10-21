@@ -156,3 +156,66 @@ fn fetch_streams_progress_and_can_cancel() {
     let err = ops::with_progress(p, || ops::fetch(&local)).unwrap_err();
     assert_eq!(err.to_string(), "已取消");
 }
+
+#[test]
+fn rename_branch_local_and_remote() {
+    let remote = temp_repo("rename-remote");
+    ops::git(&remote, &["config", "receive.denyCurrentBranch", "ignore"]).unwrap();
+    std::fs::write(remote.join("a.txt"), "a\n").unwrap();
+    ops::stage_all(&remote).unwrap();
+    ops::commit(&remote, "初始", false).unwrap();
+
+    let local = temp_repo("rename-local");
+    ops::git(&local, &["remote", "add", "origin", &format!("file://{}", remote.display())]).unwrap();
+    ops::git(&local, &["fetch", "origin"]).unwrap();
+    ops::git(&local, &["switch", "-c", "feture/login", "origin/main"]).unwrap();
+    ops::git(&local, &["push", "-u", "origin", "feture/login"]).unwrap();
+
+    // 只改本地：远程的旧名字还在，上游配置跟着改名后的分支走
+    ops::rename_branch(&local, "feture/login", "feature/login-tmp", false).unwrap();
+    assert!(ops::git(&local, &["rev-parse", "--verify", "feature/login-tmp"]).is_ok());
+    assert!(ops::git(&remote, &["rev-parse", "--verify", "refs/heads/feture/login"]).is_ok());
+    let up = ops::git(&local, &["rev-parse", "--abbrev-ref", "feature/login-tmp@{u}"]).unwrap();
+    assert_eq!(up.trim(), "origin/feture/login");
+
+    // 连远程一起改：远程只剩新名字，上游指向新名字
+    ops::rename_branch(&local, "feature/login-tmp", "feature/login", true).unwrap();
+    assert!(ops::git(&remote, &["rev-parse", "--verify", "refs/heads/feature/login"]).is_ok());
+    assert!(ops::git(&remote, &["rev-parse", "--verify", "refs/heads/feture/login"]).is_err());
+    let up = ops::git(&local, &["rev-parse", "--abbrev-ref", "feature/login@{u}"]).unwrap();
+    assert_eq!(up.trim(), "origin/feature/login");
+
+    // 新名字已经存在时报错，原分支不受影响
+    ops::git(&local, &["branch", "other"]).unwrap();
+    assert!(ops::rename_branch(&local, "other", "feature/login", false).is_err());
+    assert!(ops::git(&local, &["rev-parse", "--verify", "other"]).is_ok());
+}
+
+#[test]
+fn push_rejected_then_force_with_lease() {
+    let remote = temp_repo("force-remote");
+    ops::git(&remote, &["config", "receive.denyCurrentBranch", "ignore"]).unwrap();
+    std::fs::write(remote.join("a.txt"), "a\n").unwrap();
+    ops::stage_all(&remote).unwrap();
+    ops::commit(&remote, "初始", false).unwrap();
+
+    let local = temp_repo("force-local");
+    ops::git(&local, &["remote", "add", "origin", &format!("file://{}", remote.display())]).unwrap();
+    ops::git(&local, &["fetch", "origin"]).unwrap();
+    ops::git(&local, &["switch", "--no-track", "-c", "dev", "origin/main"]).unwrap();
+    std::fs::write(local.join("b.txt"), "b\n").unwrap();
+    ops::stage_all(&local).unwrap();
+    ops::commit(&local, "第一版", false).unwrap();
+    ops::push(&local, false).unwrap();
+
+    // 修改已经推送的提交后，普通推送被拒绝，报错里有界面用来识别的关键字
+    ops::commit(&local, "第二版", true).unwrap();
+    let err = ops::push(&local, false).unwrap_err().to_string();
+    assert!(err.contains("[rejected]") || err.contains("non-fast-forward"), "{err}");
+
+    // 强制推送成功，远程变成本地的提交
+    ops::push(&local, true).unwrap();
+    let head = ops::git(&local, &["rev-parse", "HEAD"]).unwrap();
+    let remote_head = ops::git(&remote, &["rev-parse", "refs/heads/dev"]).unwrap();
+    assert_eq!(head, remote_head);
+}

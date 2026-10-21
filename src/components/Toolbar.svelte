@@ -2,8 +2,9 @@
   import { savedLang, setLang, t, type Lang } from "../lib/i18n";
   import { checkUpdate, updater } from "../lib/updater.svelte";
   import { notifyDialog } from "../lib/notify.svelte";
+  import FocusPicker from "./FocusPicker.svelte";
   import { api } from "../lib/api";
-  import { app, chooseEditor, dialog, errorText, openFlow, openIn, setAutoFetch, setTheme, toast, type RepoTab, type Theme } from "../lib/store.svelte";
+  import { app, chooseEditor, dialog, errorText, forcePush, openFlow, openIn, setAutoFetch, setTheme, toast, type RepoTab, type Theme } from "../lib/store.svelte";
   import { isMac } from "../lib/util";
   import RepoPicker from "./RepoPicker.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
@@ -13,6 +14,16 @@
 
   let picker = $state<{ x: number; y: number } | null>(null);
   let branchMenu = $state<{ x: number; y: number } | null>(null);
+  let focusPicker = $state<{ x: number; y: number } | null>(null);
+
+  /** 分支筛选按钮上的文字 */
+  const focusLabel = $derived.by(() => {
+    const f = tab?.focus ?? [];
+    if (!f.length) return t("全部分支");
+    if (f.length === 1 && f[0] === "HEAD") return t("当前分支");
+    if (f.length === 1) return f[0].replace(/^refs\/(heads|remotes)\//, "");
+    return t("{0} 个分支", f.length);
+  });
   let branchFilter = $state("");
   let flowMenu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
   /** Git Flow 面板：开始新分支，或完成 / 推送已有的 flow 分支 */
@@ -45,6 +56,18 @@
         { label: isMac ? t("在访达中显示") : t("在资源管理器中显示"), action: () => openIn(tb, "folder") },
         "sep",
         { label: t("设置编辑器命令…"), action: chooseEditor },
+      ],
+    };
+  }
+
+  function showPushMenu(e: MouseEvent) {
+    if (!tab) return;
+    const tb = tab;
+    flowMenu = {
+      ...below(e),
+      items: [
+        { label: t("推送"), action: () => tb.run({ op: "push", force: false }, t("正在推送…")) },
+        { label: t("强制推送…"), hint: "--force-with-lease", danger: true, action: () => forcePush(tb) },
       ],
     };
   }
@@ -222,11 +245,12 @@
       </div>
       <button
         class="focus-btn"
-        class:on={tab.focus.length === 1 && tab.focus[0] === "HEAD"}
-        onclick={() => tab.setFocus(tab.focus.length === 1 && tab.focus[0] === "HEAD" ? [] : ["HEAD"])}
-        title={t("只显示当前分支的提交，再点一次显示全部分支")}
+        class:on={tab.focus.length > 0}
+        onclick={(e) => (focusPicker = below(e))}
+        title={t("选择在提交图里显示哪些分支")}
       >
-        {t("◎ 只看当前分支")}
+        ◎ {focusLabel}
+        <span class="caret">▾</span>
       </button>
     {/if}
   </div>
@@ -257,6 +281,7 @@
         <span class="ico">⬆</span>{t("推送")}
         {#if headRef?.ahead}<span class="badge">{headRef.ahead}</span>{/if}
       </button>
+      <button class="tb more" onclick={showPushMenu} title={t("更多推送选项")}>▾</button>
       <span class="sep"></span>
       <button class="tb" onclick={newBranch} title={t("新建分支")}><span class="ico">⑂</span>{t("分支")}</button>
       <button class="tb" onclick={stash} title={t("Stash 当前改动")}><span class="ico">⊟</span>Stash</button>
@@ -311,6 +336,10 @@
 {/if}
 {#if flowMenu}
   <ContextMenu x={flowMenu.x} y={flowMenu.y} items={flowMenu.items} onClose={() => (flowMenu = null)} />
+{/if}
+
+{#if focusPicker && tab}
+  <FocusPicker {tab} x={focusPicker.x} y={focusPicker.y} onClose={() => (focusPicker = null)} />
 {/if}
 
 {#if branchMenu && tab}
@@ -410,6 +439,9 @@
     white-space: nowrap;
   }
   .focus-btn {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
     height: 24px;
     margin-top: 12px;
     padding: 0 10px;
@@ -423,6 +455,9 @@
   .focus-btn.on {
     background: var(--accent);
     border-color: var(--accent);
+    color: #fff;
+  }
+  .focus-btn.on .caret {
     color: #fff;
   }
   .slash {
@@ -457,6 +492,14 @@
     background: none;
     font-size: 11.5px;
     color: var(--text-dim);
+  }
+  /* 推送旁边的下拉箭头，紧贴推送按钮 */
+  .tb.more {
+    min-width: 0;
+    width: 16px;
+    margin-left: -4px;
+    padding: 0;
+    font-size: 10px;
   }
   .tb:hover:not(:disabled) {
     background: var(--bg-hover);

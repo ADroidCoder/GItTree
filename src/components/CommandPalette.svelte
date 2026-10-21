@@ -3,7 +3,7 @@
   import { bestScore } from "../lib/fuzzy";
   import { lang, setLang, t } from "../lib/i18n";
   import { notifyDialog } from "../lib/notify.svelte";
-  import { activate, activeTab, app, closeTab, openFlow, openIn, openRepo, recentRepos, setTheme, showTasks } from "../lib/store.svelte";
+  import { activate, activeTab, app, closeTab, forcePush, openFlow, openIn, openRepo, recentRepos, setTheme, showTasks } from "../lib/store.svelte";
   import { checkUpdate } from "../lib/updater.svelte";
 
   let {
@@ -41,6 +41,7 @@
         { group: g, label: t("获取"), keys: "huoqu hq fetch", run: () => tb.run({ op: "fetch" }, t("正在获取远程更新…")) },
         { group: g, label: t("拉取"), keys: "laqu lq pull", run: () => tb.run({ op: "pull" }, t("正在拉取…")) },
         { group: g, label: t("推送"), keys: "tuisong ts push", run: () => tb.run({ op: "push", force: false }, t("正在推送…")) },
+        { group: g, label: t("强制推送…"), keys: "qiangzhi tuisong qzts force push", run: () => forcePush(tb) },
         { group: g, label: t("新建分支…"), keys: "xinjian fenzhi xjfz new branch create", run: () => toolbar?.newBranch() },
         { group: g, label: t("Stash 当前改动"), keys: "zancun zc stash save", run: () => toolbar?.stash() },
         { group: g, label: t("恢复最近一次 stash"), keys: "huifu hf stash pop", run: () => tb.run({ op: "stash", action: "pop", index: 0 }, t("正在恢复 stash…")) },

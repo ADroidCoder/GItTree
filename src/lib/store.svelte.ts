@@ -300,7 +300,8 @@ export class RepoTab {
       this.busy = label;
       this.busySince = Date.now();
       this.progressLine = "";
-      this.cancellable = NETWORK_OPS.has(op.op) || (op.op === "flow_finish" && op.options.push);
+      this.cancellable =
+        NETWORK_OPS.has(op.op) || (op.op === "flow_finish" && op.options.push) || (op.op === "rename_branch" && op.remote);
       this.addLog({ text: `—— ${label.replace(/…$/, "")} · ${new Date().toLocaleTimeString()}`, transient: false, kind: "ok" });
     }
     try {
@@ -313,6 +314,11 @@ export class RepoTab {
       this.addLog({ text: `✗ ${errorText(e)}`, transient: false, kind: "err" });
       toast(errorText(e), "error");
       if (label && this.notifyDone()) notifyInBackground(this.name, t("{0}失败：{1}", opName(op.op), errorText(e).split("\n")[0]));
+      // 普通推送因为远程有新提交被拒绝：说明原因，可以选择强制推送
+      if (op.op === "push" && !op.force && /\[rejected\]|non-fast-forward|fetch first|stale info/i.test(errorText(e))) {
+        const tab = this;
+        setTimeout(() => offerForcePush(tab));
+      }
       await this.refresh();
       this.showConflicts();
       return false;
@@ -601,6 +607,34 @@ export function dialog(spec: Omit<DialogSpec, "resolve">): Promise<{ input: stri
   return new Promise((resolve) => {
     app.dialog = { ...spec, resolve };
   });
+}
+
+/** 强制推送当前分支，先确认 */
+export async function forcePush(tab: RepoTab) {
+  const branch = tab.repo?.head.branch;
+  if (!branch) return toast(t("没有检出分支，无法推送"), "error");
+  const ok = await confirm(
+    t("强制推送"),
+    t(
+      "用本地的 {0} 覆盖远程分支？\n远程上有、本地没有的提交会被丢掉。\n如果在你上次获取之后别人又推送了新提交，这次推送会失败，不会覆盖别人的提交（--force-with-lease）。",
+      branch,
+    ),
+    t("强制推送"),
+    true,
+  );
+  if (ok) await tab.run({ op: "push", force: true }, t("正在强制推送…"));
+}
+
+async function offerForcePush(tab: RepoTab) {
+  const ok = await confirm(
+    t("推送被拒绝"),
+    t(
+      "远程分支上有你本地没有的提交。\n· 如果是别人推送了新提交：请先拉取，再推送。\n· 如果是你刚变基或修改过已经推送的提交，确定要用本地覆盖远程：可以强制推送。",
+    ),
+    t("强制推送…"),
+    true,
+  );
+  if (ok) await forcePush(tab);
 }
 
 export async function confirm(title: string, message: string, confirmText = t("确定"), danger = false) {
