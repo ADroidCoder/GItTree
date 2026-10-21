@@ -1,6 +1,7 @@
-# 打包 Windows 和 macOS 安装包。
-# - 在 Actions 页面手动运行，或者推送任意分支：安装包在这次运行的 Artifacts 里下载
-# - 推送 v 开头的标签（例如 v0.1.0）：所有平台打包成功后发布一个 Release，附上安装包
+# 测试，以及打包 Windows 和 macOS 安装包。
+# - 推送分支、提交 PR：只跑测试
+# - 在 Actions 页面手动运行：测试并打包，安装包在这次运行的 Artifacts 里下载
+# - 推送 v 开头的标签（例如 v0.1.0）：测试并打包，全部成功后发布一个 Release，附上安装包
 name: 打包
 
 on:
@@ -40,6 +41,8 @@ jobs:
 
   build:
     name: 打包 (${{ matrix.name }})
+    # 平时推代码只跑测试，打包很慢，只在发版和手动运行时做
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
