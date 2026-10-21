@@ -116,6 +116,11 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      # 每个平台的安装包下载下来会带着 dmg/、nsis/ 这样的子目录，放到同一层才能上传
+      - name: 把安装包放到同一层
+        run: |
+          find dist -mindepth 2 -type f -exec mv -t dist {} +
+          find dist -mindepth 1 -type d -empty -delete
       - name: 生成自动更新用的 latest.json
         run: |
           prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
