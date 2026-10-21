@@ -100,7 +100,8 @@ fn submodule_status_and_update() {
     let subs = submodule::list(&app).unwrap();
     assert_eq!(subs.len(), 1);
     assert_eq!((subs[0].path.as_str(), subs[0].name.as_str(), subs[0].state.as_str()), ("libs/lib", "libs/lib", "ok"));
-    assert_eq!(subs[0].url, url);
+    // Windows 上 git 会把地址里的 \ 存成 /
+    assert_eq!(subs[0].url.replace('\\', "/"), url.replace('\\', "/"));
 
     // 克隆下来的仓库里子模块还没初始化
     let parent = app.parent().unwrap();
