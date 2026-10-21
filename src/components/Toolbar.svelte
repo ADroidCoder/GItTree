@@ -1,10 +1,11 @@
 <script lang="ts">
   import { savedLang, setLang, t, type Lang } from "../lib/i18n";
   import { checkUpdate, updater } from "../lib/updater.svelte";
+  import { shareUrl } from "../lib/util";
   import { notifyDialog } from "../lib/notify.svelte";
   import FocusPicker from "./FocusPicker.svelte";
   import { api } from "../lib/api";
-  import { app, chooseEditor, dialog, errorText, forcePush, openFlow, openIn, setAutoFetch, setTheme, toast, type RepoTab, type Theme } from "../lib/store.svelte";
+  import { addRemote, app, chooseEditor, copyRemoteUrl, dialog, errorText, forcePush, openRemoteWeb, openFlow, openIn, setAutoFetch, setTheme, toast, type RepoTab, type Theme } from "../lib/store.svelte";
   import { isMac } from "../lib/util";
   import RepoPicker from "./RepoPicker.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
@@ -54,6 +55,13 @@
         { label: t("用编辑器打开"), hint: app.editor, action: () => openIn(tb, "editor") },
         { label: t("在终端中打开"), action: () => openIn(tb, "terminal") },
         { label: isMac ? t("在访达中显示") : t("在资源管理器中显示"), action: () => openIn(tb, "folder") },
+        "sep",
+        // 有多个远程仓库时每个都列出来
+        ...tb.remotes.flatMap((r): MenuItem[] => [
+          { label: tb.remotes.length > 1 ? t("复制 {0} 的地址", r.name) : t("复制仓库地址"), hint: shareUrl(r.url), action: () => copyRemoteUrl(r) },
+          { label: tb.remotes.length > 1 ? t("在浏览器中打开 {0}", r.name) : t("在浏览器中打开仓库"), action: () => openRemoteWeb(r) },
+        ]),
+        ...(tb.remotes.length ? [] : [{ label: t("添加远程仓库…"), action: () => addRemote(tb) }]),
         "sep",
         { label: t("设置编辑器命令…"), action: chooseEditor },
       ],

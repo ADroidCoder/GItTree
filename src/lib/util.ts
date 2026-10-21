@@ -58,3 +58,23 @@ export function splitPath(p: string) {
 }
 
 export const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+
+/**
+ * 把 git 远程地址转成仓库网页地址，认不出来时返回 null：
+ * git@host:a/b.git、ssh://git@host:22/a/b.git、https://user@host/a/b.git → https://host/a/b
+ */
+export function webUrl(remote: string): string | null {
+  const u = remote.trim();
+  let m = u.match(/^[\w.-]+@([^:/]+):(?!\/)(.+?)(?:\.git)?\/?$/);
+  if (m) return `https://${m[1]}/${m[2]}`;
+  m = u.match(/^ssh:\/\/(?:[^@/]+@)?([^:/]+)(?::\d+)?\/(.+?)(?:\.git)?\/?$/);
+  if (m) return `https://${m[1]}/${m[2]}`;
+  m = u.match(/^(https?):\/\/(?:[^@/]+@)?([^/]+)\/(.+?)(?:\.git)?\/?$/);
+  if (m) return `${m[1]}://${m[2]}/${m[3]}`;
+  return null;
+}
+
+/** 分享给别人的地址：去掉 https 地址里的用户名和密码 / token */
+export function shareUrl(remote: string): string {
+  return remote.trim().replace(/^(https?:\/\/)[^@/]+@/, "$1");
+}

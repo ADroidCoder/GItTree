@@ -268,3 +268,144 @@ fn checkout_with_stash_carries_or_keeps_changes() {
     assert_eq!(stash_count(), 1);
     assert!(std::fs::read_to_string(dir.join("f.txt")).unwrap().contains("<<<<<<<"));
 }
+
+#[test]
+fn manage_remotes_and_push_tags() {
+    let remote = temp_repo("tags-remote");
+    let local = temp_repo("tags-local");
+    std::fs::write(local.join("a.txt"), "a\n").unwrap();
+    ops::stage_all(&local).unwrap();
+    ops::commit(&local, "初始", false).unwrap();
+
+    let url = format!("file://{}", remote.display());
+    ops::add_remote(&local, "origin", &url).unwrap();
+    ops::add_remote(&local, "upstream", "git@gitee.com:someone/repo.git").unwrap();
+    ops::git(&local, &["remote", "set-url", "--push", "upstream", "git@gitee.com:me/repo.git"]).unwrap();
+    let list = ops::remotes(&local).unwrap();
+    assert_eq!(list.len(), 2);
+    assert_eq!(list[0], ops::Remote { name: "origin".into(), url: url.clone(), push_url: None });
+    assert_eq!(list[1].url, "git@gitee.com:someone/repo.git");
+    assert_eq!(list[1].push_url.as_deref(), Some("git@gitee.com:me/repo.git"));
+
+    ops::rename_remote(&local, "upstream", "fork").unwrap();
+    ops::set_remote_url(&local, "fork", "https://gitee.com/someone/repo.git").unwrap();
+    let fork = ops::remotes(&local).unwrap().into_iter().find(|r| r.name == "fork").unwrap();
+    assert_eq!(fork.url, "https://gitee.com/someone/repo.git");
+    ops::remove_remote(&local, "fork").unwrap();
+    assert_eq!(ops::remotes(&local).unwrap().len(), 1);
+
+    // 推送单个标签、所有标签，删除远程标签
+    ops::git(&local, &["tag", "v1.0"]).unwrap();
+    ops::git(&local, &["tag", "v1.1"]).unwrap();
+    ops::push_tag(&local, "origin", Some("v1.0")).unwrap();
+    let tags = || ops::git(&remote, &["tag"]).unwrap();
+    assert_eq!(tags().trim(), "v1.0");
+    ops::push_tag(&local, "origin", None).unwrap();
+    assert_eq!(tags().lines().count(), 2);
+    ops::delete_remote_tag(&local, "origin", "v1.0").unwrap();
+    assert_eq!(tags().trim(), "v1.1");
+}
+
+#[test]
+fn stage_unstage_and_discard_selected_lines() {
+    use gittree_core::{diff, git2};
+    let dir = temp_repo("lines");
+    std::fs::write(dir.join("f.txt"), "a\nb\nc\nd\n").unwrap();
+    ops::stage_all(&dir).unwrap();
+    ops::commit(&dir, "初始", false).unwrap();
+    // 一个代码块里：改了 b、删了 c、加了两行
+    std::fs::write(dir.join("f.txt"), "a\nB\nd\nx\ny\n").unwrap();
+    let repo = git2::Repository::open(&dir).unwrap();
+    let hunk = |staged: bool| diff::workdir_file_diff(&repo, "f.txt", staged).unwrap().unwrap().hunks.remove(0);
+    let h = hunk(false);
+    let idx = |text: &str, kind: char| h.lines.iter().position(|l| l.text == text && l.kind == kind).unwrap();
+    let index_content = || ops::git(&dir, &["show", ":f.txt"]).unwrap();
+
+    // 只暂存 “b → B” 这一处修改
+    let sel = [idx("b", '-'), idx("B", '+')];
+    let p = diff::lines_patch(&repo, "f.txt", false, &h.header, Some(&sel), false).unwrap().unwrap();
+    ops::apply_patch(&dir, &p, true, false).unwrap();
+    assert_eq!(index_content(), "a\nB\nc\nd\n");
+
+    // 再暂存新增的 x
+    let h = hunk(false);
+    let sel = [h.lines.iter().position(|l| l.text == "x" && l.kind == '+').unwrap()];
+    let p = diff::lines_patch(&repo, "f.txt", false, &h.header, Some(&sel), false).unwrap().unwrap();
+    ops::apply_patch(&dir, &p, true, false).unwrap();
+    assert_eq!(index_content(), "a\nB\nc\nd\nx\n");
+
+    // 从暂存区取消 “b → B”，x 还在暂存区
+    let hs = hunk(true);
+    let sel: Vec<usize> = hs.lines.iter().enumerate().filter(|(_, l)| l.text == "b" || l.text == "B").map(|(i, _)| i).collect();
+    let p = diff::lines_patch(&repo, "f.txt", true, &hs.header, Some(&sel), true).unwrap().unwrap();
+    ops::apply_patch(&dir, &p, true, true).unwrap();
+    assert_eq!(index_content(), "a\nb\nc\nd\nx\n");
+
+    // 丢弃工作区里新增的 y，其他改动保留
+    let h = hunk(false);
+    let sel = [h.lines.iter().position(|l| l.text == "y" && l.kind == '+').unwrap()];
+    let p = diff::lines_patch(&repo, "f.txt", false, &h.header, Some(&sel), true).unwrap().unwrap();
+    ops::apply_patch(&dir, &p, false, true).unwrap();
+    assert_eq!(std::fs::read_to_string(dir.join("f.txt")).unwrap(), "a\nB\nd\nx\n");
+
+    // 只选了上下文行：报错
+    let h = hunk(false);
+    let ctx = h.lines.iter().position(|l| l.kind == ' ').unwrap();
+    assert!(diff::lines_patch(&repo, "f.txt", false, &h.header, Some(&[ctx]), false).is_err());
+}
+
+#[test]
+fn stage_selected_lines_without_trailing_newline() {
+    use gittree_core::{diff, git2};
+    let dir = temp_repo("lines-eol");
+    std::fs::write(dir.join("f.txt"), "a\nlast").unwrap();
+    ops::stage_all(&dir).unwrap();
+    ops::commit(&dir, "初始", false).unwrap();
+    std::fs::write(dir.join("f.txt"), "a\nnew\nLAST").unwrap();
+    let repo = git2::Repository::open(&dir).unwrap();
+    let h = diff::workdir_file_diff(&repo, "f.txt", false).unwrap().unwrap().hunks.remove(0);
+    // 只暂存最后一行的修改，不要新增的 new
+    let sel: Vec<usize> = h.lines.iter().enumerate().filter(|(_, l)| l.text == "last" || l.text == "LAST").map(|(i, _)| i).collect();
+    let p = diff::lines_patch(&repo, "f.txt", false, &h.header, Some(&sel), false).unwrap().unwrap();
+    ops::apply_patch(&dir, &p, true, false).unwrap();
+    assert_eq!(ops::git(&dir, &["show", ":f.txt"]).unwrap(), "a\nLAST");
+}
+
+#[test]
+fn compare_branches() {
+    use gittree_core::git2;
+    let dir = temp_repo("compare");
+    std::fs::write(dir.join("a.txt"), "a\n").unwrap();
+    ops::stage_all(&dir).unwrap();
+    ops::commit(&dir, "初始", false).unwrap();
+    ops::git(&dir, &["switch", "-c", "release"]).unwrap();
+    std::fs::write(dir.join("r.txt"), "r\n").unwrap();
+    ops::stage_all(&dir).unwrap();
+    ops::commit(&dir, "release 1", false).unwrap();
+    std::fs::write(dir.join("a.txt"), "a\nrelease\n").unwrap();
+    ops::stage_all(&dir).unwrap();
+    ops::commit(&dir, "release 2", false).unwrap();
+    ops::git(&dir, &["switch", "main"]).unwrap();
+    std::fs::write(dir.join("m.txt"), "m\n").unwrap();
+    ops::stage_all(&dir).unwrap();
+    ops::commit(&dir, "main 1", false).unwrap();
+    let repo = git2::Repository::open(&dir).unwrap();
+
+    // 三点对比：只看 release 自己的改动，不包括 main 上新增的 m.txt
+    let c = diff::compare(&repo, "main", "release", true).unwrap();
+    let mut files: Vec<_> = c.files.iter().map(|f| (f.path.as_str(), f.status)).collect();
+    files.sort();
+    assert_eq!(files, [("a.txt", 'M'), ("r.txt", 'A')]);
+    assert_eq!(c.commits.iter().map(|c| c.summary.as_str()).collect::<Vec<_>>(), ["release 2", "release 1"]);
+    assert_eq!((c.ahead, c.behind), (2, 1));
+    assert!(c.base.is_some());
+
+    // 直接对比两端：main 上的 m.txt 在 release 里没有，算删除
+    let c2 = diff::compare(&repo, "main", "release", false).unwrap();
+    assert!(c2.files.iter().any(|f| f.path == "m.txt" && f.status == 'D'));
+
+    let d = diff::compare_file_diff(&repo, c.base.as_ref().unwrap(), &c.to, "a.txt", None).unwrap().unwrap();
+    assert!(d.hunks[0].lines.iter().any(|l| l.kind == '+' && l.text == "release"));
+
+    assert!(diff::compare(&repo, "main", "no-such-branch", true).is_err());
+}

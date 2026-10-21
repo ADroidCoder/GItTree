@@ -384,6 +384,26 @@ async fn commit_file_diff(
     blocking(move || diff::commit_file_diff(&git2::Repository::open(dir)?, &oid, &path, old_path.as_deref())).await
 }
 
+/// 对比两个版本（分支名、标签名或提交号）
+#[tauri::command]
+async fn compare(state: State<'_, AppState>, repo: String, from: String, to: String, three_dot: bool) -> CmdResult<diff::Compare> {
+    let (dir, _) = dirs_of(&state, &repo)?;
+    blocking(move || diff::compare(&git2::Repository::open(dir)?, &from, &to, three_dot)).await
+}
+
+#[tauri::command]
+async fn compare_file_diff(
+    state: State<'_, AppState>,
+    repo: String,
+    from: String,
+    to: String,
+    path: String,
+    old_path: Option<String>,
+) -> CmdResult<Option<diff::FileDiff>> {
+    let (dir, _) = dirs_of(&state, &repo)?;
+    blocking(move || diff::compare_file_diff(&git2::Repository::open(dir)?, &from, &to, &path, old_path.as_deref())).await
+}
+
 #[tauri::command]
 async fn status(state: State<'_, AppState>, repo: String) -> CmdResult<ops::Status> {
     let (dir, git_dir) = dirs_of(&state, &repo)?;
@@ -426,6 +446,9 @@ enum Op {
     /// 暂存（staged = false）或取消暂存（staged = true）一个代码块
     StageHunk { path: String, header: String, staged: bool },
     DiscardHunk { path: String, header: String },
+    /// 只暂存 / 取消暂存代码块里选中的行（下标和界面上的行一致）
+    StageLines { path: String, header: String, staged: bool, lines: Vec<usize> },
+    DiscardLines { path: String, header: String, lines: Vec<usize> },
     Commit { message: String, amend: bool },
     Checkout { name: String },
     CheckoutRemote { remote: String, local: String },
@@ -470,6 +493,13 @@ enum Op {
     RebaseInteractive { from: String, steps: Vec<rebase::Step> },
     /// 本地改动会被覆盖时：先 stash，执行 inner（切换分支），pop 为 true 时再恢复改动
     WithStash { inner: Box<Op>, pop: bool },
+    AddRemote { name: String, url: String },
+    RemoveRemote { name: String },
+    RenameRemote { old: String, new: String },
+    SetRemoteUrl { name: String, url: String },
+    /// tag 为空时推送所有标签
+    PushTag { remote: String, tag: Option<String> },
+    DeleteRemoteTag { remote: String, tag: String },
 }
 
 impl Op {
@@ -514,6 +544,11 @@ impl Op {
 
 fn hunk(dir: &Path, path: &str, header: &str, staged: bool) -> Result<Vec<u8>, Error> {
     diff::hunk_patch(&git2::Repository::open(dir)?, path, staged, header)?
+        .ok_or_else(|| tr!("这个代码块已经变化了，请刷新后重试", "This hunk has changed. Refresh and try again").into())
+}
+
+fn hunk_lines(dir: &Path, path: &str, header: &str, staged: bool, lines: &[usize], reverse: bool) -> Result<Vec<u8>, Error> {
+    diff::lines_patch(&git2::Repository::open(dir)?, path, staged, header, Some(lines), reverse)?
         .ok_or_else(|| tr!("这个代码块已经变化了，请刷新后重试", "This hunk has changed. Refresh and try again").into())
 }
 
@@ -607,6 +642,28 @@ async fn init_repo(path: String) -> CmdResult<()> {
 async fn rebase_plan(state: State<'_, AppState>, repo: String, from: String) -> CmdResult<Vec<rebase::PlanCommit>> {
     let (dir, _) = dirs_of(&state, &repo)?;
     blocking(move || rebase::plan(&dir, &from)).await
+}
+
+/// 所有远程仓库及地址
+#[tauri::command]
+async fn list_remotes(state: State<'_, AppState>, repo: String) -> CmdResult<Vec<ops::Remote>> {
+    let (dir, _) = dirs_of(&state, &repo)?;
+    blocking(move || ops::remotes(&dir)).await
+}
+
+/// 用系统默认浏览器打开网页（只允许 http / https）
+#[tauri::command]
+fn open_url(url: String) -> CmdResult<()> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err(tr!("只能打开网页地址", "Only web addresses can be opened"));
+    }
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("open").arg(&url).spawn();
+    #[cfg(target_os = "windows")]
+    let r = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", &url]).spawn();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let r = std::process::Command::new("xdg-open").arg(&url).spawn();
+    r.map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// 用外部程序打开：folder = 文件管理器，terminal = 终端，editor = 编辑器命令（例如 code、cursor、idea）。
@@ -752,6 +809,12 @@ fn run_op(dir: &Path, git_dir: &Path, op: Op) -> Result<String, Error> {
                 done(ops::apply_patch(d, &hunk(d, &path, &header, staged)?, true, staged))
             }
             Op::DiscardHunk { path, header } => done(ops::apply_patch(d, &hunk(d, &path, &header, false)?, false, true)),
+            Op::StageLines { path, header, staged, lines } => {
+                done(ops::apply_patch(d, &hunk_lines(d, &path, &header, staged, &lines, staged)?, true, staged))
+            }
+            Op::DiscardLines { path, header, lines } => {
+                done(ops::apply_patch(d, &hunk_lines(d, &path, &header, false, &lines, true)?, false, true))
+            }
             Op::Commit { message, amend } => done(ops::commit(d, &message, amend)),
             Op::Checkout { name } => done(ops::checkout(d, &name)),
             Op::CheckoutRemote { remote, local } => done(ops::checkout_remote(d, &remote, &local)),
@@ -783,6 +846,12 @@ fn run_op(dir: &Path, git_dir: &Path, op: Op) -> Result<String, Error> {
             Op::MergeInto { branch, source } => ops::merge_into(d, &branch, &source),
             Op::RebaseBranch { branch, onto } => ops::rebase_branch(d, &branch, &onto),
             Op::RebaseInteractive { from, steps } => rebase::run(d, git_dir, &from, &steps),
+            Op::AddRemote { name, url } => done(ops::add_remote(d, &name, &url)),
+            Op::RemoveRemote { name } => done(ops::remove_remote(d, &name)),
+            Op::RenameRemote { old, new } => done(ops::rename_remote(d, &old, &new)),
+            Op::SetRemoteUrl { name, url } => done(ops::set_remote_url(d, &name, &url)),
+            Op::PushTag { remote, tag } => ops::push_tag(d, &remote, tag.as_deref()),
+            Op::DeleteRemoteTag { remote, tag } => ops::delete_remote_tag(d, &remote, &tag),
             Op::WithStash { inner, pop } => {
                 let what = inner.undo_label().map(|(label, _)| label).unwrap_or_default();
                 ops::with_stash(d, &what, pop, || run_op(d, git_dir, *inner))
@@ -865,6 +934,8 @@ pub fn run() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             set_lang,
+            list_remotes,
+            open_url,
             open_repo,
             close_repo,
             refresh_repo,
@@ -885,6 +956,8 @@ pub fn run() {
             row_of,
             commit_details,
             commit_file_diff,
+            compare,
+            compare_file_diff,
             status,
             workdir_diff,
             stash_list,

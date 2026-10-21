@@ -248,6 +248,20 @@ pub fn workdir_file_diff(repo: &Repository, path: &str, staged: bool) -> Result<
 /// 生成只包含某一个代码块的补丁，用原始字节，避免非 UTF-8 文件（比如 GBK）被破坏。
 /// 返回 None 表示代码块已经变了（界面上的 diff 过期了）。
 pub fn hunk_patch(repo: &Repository, path: &str, staged: bool, header: &str) -> Result<Option<Vec<u8>>, Error> {
+    lines_patch(repo, path, staged, header, None, false)
+}
+
+/// 和 hunk_patch 一样，但只包含代码块里选中的行（下标和界面上显示的行一致）。
+/// reverse 表示补丁要反向应用（取消暂存、丢弃）：
+/// 正向时没选中的新增行去掉、删除行变成上下文；反向时反过来。
+pub fn lines_patch(
+    repo: &Repository,
+    path: &str,
+    staged: bool,
+    header: &str,
+    selected: Option<&[usize]>,
+    reverse: bool,
+) -> Result<Option<Vec<u8>>, Error> {
     let diff = workdir_diff(repo, path, staged)?;
     if diff.deltas().len() == 0 {
         return Ok(None);
@@ -263,27 +277,196 @@ pub fn hunk_patch(repo: &Repository, path: &str, staged: bool, header: &str) -> 
         if String::from_utf8_lossy(hunk.header()).trim_end() != header {
             continue;
         }
-        let mut out = Vec::new();
-        out.extend_from_slice(format!("diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n").as_bytes());
-        out.extend_from_slice(hunk.header());
-        if !hunk.header().ends_with(b"\n") {
-            out.push(b'\n');
+        // 先把这个代码块的行收集起来；“文件末尾没有换行”的标记记在它前面那一行上
+        struct Rec<'a> {
+            origin: char,
+            picked: bool,
+            content: &'a [u8],
+            no_eol: bool,
         }
+        let mut recs: Vec<Rec> = Vec::new();
+        // 界面上的行号：不算“文件末尾没有换行”的标记行
+        let mut index = 0;
         for l in 0..n {
             let line = patch.line_in_hunk(h, l)?;
             match line.origin() {
-                '+' | '-' | ' ' => {
-                    out.push(line.origin() as u8);
-                    out.extend_from_slice(line.content());
-                    if !line.content().ends_with(b"\n") {
-                        out.push(b'\n');
+                '=' | '>' | '<' => {
+                    if let Some(last) = recs.last_mut() {
+                        last.no_eol = true;
                     }
                 }
-                '=' | '>' | '<' => out.extend_from_slice(b"\\ No newline at end of file\n"),
+                o @ ('+' | '-' | ' ') => {
+                    recs.push(Rec { origin: o, picked: selected.is_none_or(|s| s.contains(&index)), content: line.content(), no_eol: false });
+                    index += 1;
+                }
                 _ => {}
             }
         }
+
+        let mut body = Vec::new();
+        let (mut old_count, mut new_count, mut changed) = (0, 0, 0);
+        let mut emit = |o: char, r: &Rec| {
+            match o {
+                ' ' => {
+                    old_count += 1;
+                    new_count += 1;
+                }
+                '-' => {
+                    old_count += 1;
+                    changed += 1;
+                }
+                _ => {
+                    new_count += 1;
+                    changed += 1;
+                }
+            }
+            body.push(o as u8);
+            body.extend_from_slice(r.content);
+            if !r.content.ends_with(b"\n") {
+                body.push(b'\n');
+            }
+            if r.no_eol {
+                body.extend_from_slice(b"\\ No newline at end of file\n");
+            }
+        };
+        // 没选中的行：在补丁应用的那一边本来就存在的变成上下文，不存在的去掉
+        let keep = |r: &Rec| -> Option<char> {
+            match r.origin {
+                ' ' => Some(' '),
+                o if r.picked => Some(o),
+                '-' if !reverse => Some(' '),
+                '+' if reverse => Some(' '),
+                _ => None,
+            }
+        };
+        // 连续的一组改动（先删除行后新增行）里，第 k 个删除行和第 k 个新增行交错输出，
+        // 这样没选中的行变成上下文后，修改前后两边的行顺序都保持不变
+        let mut i = 0;
+        while i < recs.len() {
+            if recs[i].origin == ' ' {
+                emit(' ', &recs[i]);
+                i += 1;
+                continue;
+            }
+            let start = i;
+            while i < recs.len() && recs[i].origin == '-' {
+                i += 1;
+            }
+            let dels = &recs[start..i];
+            let add_start = i;
+            while i < recs.len() && recs[i].origin == '+' {
+                i += 1;
+            }
+            let adds = &recs[add_start..i];
+            for k in 0..dels.len().max(adds.len()) {
+                if let Some(r) = dels.get(k)
+                    && let Some(o) = keep(r)
+                {
+                    emit(o, r);
+                }
+                if let Some(r) = adds.get(k)
+                    && let Some(o) = keep(r)
+                {
+                    emit(o, r);
+                }
+            }
+        }
+        if changed == 0 {
+            return Err(tr!("没有选中要处理的改动行", "No changed lines are selected").into());
+        }
+        let mut out = Vec::new();
+        out.extend_from_slice(format!("diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n").as_bytes());
+        out.extend_from_slice(format!("@@ -{},{old_count} +{},{new_count} @@\n", hunk.old_start(), hunk.new_start()).as_bytes());
+        out.extend_from_slice(&body);
         return Ok(Some(out));
     }
     Ok(None)
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompareCommit {
+    pub oid: String,
+    pub summary: String,
+    pub author: String,
+    pub time: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Compare {
+    /// 两端解析出来的提交
+    pub from: String,
+    pub to: String,
+    /// 共同祖先（两边没有共同历史时为空）
+    pub base: Option<String>,
+    /// 文件改动：三点对比时是共同祖先 → to，否则是 from → to
+    pub files: Vec<FileChange>,
+    /// to 有、from 没有的提交，新的在前
+    pub commits: Vec<CompareCommit>,
+    /// commits 只列出前 MAX 个，这是实际总数
+    pub ahead: usize,
+    /// from 有、to 没有的提交数
+    pub behind: usize,
+}
+
+const COMPARE_MAX_COMMITS: usize = 500;
+
+fn resolve<'r>(repo: &'r Repository, rev: &str) -> Result<git2::Commit<'r>, Error> {
+    let obj = repo
+        .revparse_single(rev.trim())
+        .map_err(|_| tr!("找不到 {}，请输入分支名、标签名或提交号", "Can't find {}. Enter a branch, tag or commit hash", rev.trim()))?;
+    Ok(obj.peel_to_commit()?)
+}
+
+/// 对比两个版本。three_dot 为 true 时只看 to 相对共同祖先新增的改动（和 GitHub 的 Compare 一样），
+/// 否则直接对比两端
+pub fn compare(repo: &Repository, from: &str, to: &str, three_dot: bool) -> Result<Compare, Error> {
+    let a = resolve(repo, from)?;
+    let b = resolve(repo, to)?;
+    let base = repo.merge_base(a.id(), b.id()).ok();
+    let old_tree = match (three_dot, base) {
+        (true, Some(base)) => repo.find_commit(base)?.tree()?,
+        _ => a.tree()?,
+    };
+    let mut opts = base_opts(&[]);
+    let mut diff = repo.diff_tree_to_tree(Some(&old_tree), Some(&b.tree()?), Some(&mut opts))?;
+    find_renames(&mut diff)?;
+
+    let (ahead, behind) = repo.graph_ahead_behind(b.id(), a.id())?;
+    let mut walk = repo.revwalk()?;
+    walk.push(b.id())?;
+    walk.hide(a.id())?;
+    walk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
+    let mut commits = Vec::new();
+    for oid in walk.take(COMPARE_MAX_COMMITS) {
+        let c = repo.find_commit(oid?)?;
+        commits.push(CompareCommit {
+            oid: c.id().to_string(),
+            summary: String::from_utf8_lossy(c.summary_bytes().unwrap_or_default()).into_owned(),
+            author: String::from_utf8_lossy(c.author().name_bytes()).into_owned(),
+            time: c.time().seconds(),
+        });
+    }
+    Ok(Compare {
+        from: a.id().to_string(),
+        to: b.id().to_string(),
+        base: base.map(|o| o.to_string()),
+        files: file_changes(&diff)?,
+        commits,
+        ahead,
+        behind,
+    })
+}
+
+/// 两个提交之间某个文件的 diff（from 和 to 都是提交号）
+pub fn compare_file_diff(repo: &Repository, from: &str, to: &str, path: &str, old_path: Option<&str>) -> Result<Option<FileDiff>, Error> {
+    let a = repo.find_commit(Oid::from_str(from)?)?.tree()?;
+    let b = repo.find_commit(Oid::from_str(to)?)?.tree()?;
+    let mut paths = vec![path];
+    paths.extend(old_path);
+    let mut opts = base_opts(&paths);
+    let mut diff = repo.diff_tree_to_tree(Some(&a), Some(&b), Some(&mut opts))?;
+    if old_path.is_some() {
+        find_renames(&mut diff)?;
+    }
+    to_file_diff(&diff)
 }

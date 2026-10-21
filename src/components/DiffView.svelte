@@ -2,6 +2,7 @@
   import { t } from "../lib/i18n";
   import type { DiffLine, FileDiff } from "../lib/api";
   import { confirm, errorText, type DiffTarget, type RepoTab } from "../lib/store.svelte";
+  import { intraline, languageOf, renderLine } from "../lib/highlight";
 
   let {
     tab,
@@ -66,24 +67,76 @@
 
   type Item =
     | { t: "hunk"; h: number; header: string }
-    | { t: "line"; line: DiffLine }
-    | { t: "pair"; left: DiffLine | null; right: DiffLine | null };
+    | { t: "line"; line: DiffLine; h: number; i: number }
+    | { t: "pair"; left: DiffLine | null; right: DiffLine | null; h: number; li: number; ri: number };
 
-  const items = $derived.by(() => {
-    const out: Item[] = [];
-    if (!diff) return out;
-    diff.hunks.forEach((hunk, h) => {
-      out.push({ t: "hunk", h, header: hunk.header });
-      if (!split) {
-        for (const line of hunk.lines) out.push({ t: "line", line });
-        return;
-      }
-      // 并排视图：把相邻的删除行和新增行配对
+  // ---------- 按行选择（暂存 / 取消暂存 / 丢弃选中的行） ----------
+  /** 选中的行都在同一个代码块里：h 是代码块下标，lines 是代码块里的行下标 */
+  let sel = $state<{ h: number; lines: Set<number> } | null>(null);
+  let anchor: { h: number; i: number } | null = null;
+
+  function toggleLine(e: MouseEvent, h: number, i: number) {
+    if (!canStageHunk || !diff) return;
+    const line = diff.hunks[h].lines[i];
+    if (!line || line.kind === " ") return;
+    const lines = sel && sel.h === h ? new Set(sel.lines) : new Set<number>();
+    if (e.shiftKey && anchor && anchor.h === h) {
+      // Shift 点击：选中从上次点击到这里之间的所有改动行
+      const [a, b] = anchor.i < i ? [anchor.i, i] : [i, anchor.i];
+      for (let k = a; k <= b; k++) if (diff.hunks[h].lines[k].kind !== " ") lines.add(k);
+    } else if (lines.has(i)) {
+      lines.delete(i);
+    } else {
+      lines.add(i);
+    }
+    anchor = { h, i };
+    sel = lines.size ? { h, lines } : null;
+  }
+
+  const isSel = (h: number, i: number) => !!sel && sel.h === h && sel.lines.has(i);
+
+  async function linesAction(header: string, action: "stage" | "unstage" | "discard") {
+    if (!sel) return;
+    const lines = [...sel.lines].sort((a, b) => a - b);
+    if (action === "discard") {
+      if (!(await confirm(t("丢弃选中的行"), t("确定丢弃选中的 {0} 行改动吗？此操作无法撤销。", lines.length), t("丢弃"), true))) return;
+      if (await tab.run({ op: "discard_lines", path: target.path, header, lines })) sel = null;
+    } else if (await tab.run({ op: "stage_lines", path: target.path, header, staged: action === "unstage", lines })) {
+      sel = null;
+    }
+  }
+
+  // 换了文件就清掉选择
+  $effect(() => {
+    void target.path;
+    void target.staged;
+    sel = null;
+  });
+
+  const lang = $derived(languageOf(target.path));
+  /** 行内差异：删除行 / 新增行里真正变了的范围 */
+  let marks = new WeakMap<DiffLine, [number, number]>();
+  /** 已经高亮过的行，滚动时不重复计算 */
+  let htmlCache = new WeakMap<DiffLine, string>();
+
+  function html(line: DiffLine): string {
+    let h = htmlCache.get(line);
+    if (h === undefined) {
+      h = renderLine(line.text, lang, marks.get(line) ?? null);
+      htmlCache.set(line, h);
+    }
+    return h;
+  }
+
+  /** 相邻的一组删除行和新增行按顺序配对，算出每一对的行内差异 */
+  function computeMarks(d: FileDiff) {
+    marks = new WeakMap();
+    htmlCache = new WeakMap();
+    for (const hunk of d.hunks) {
       const lines = hunk.lines;
       let i = 0;
       while (i < lines.length) {
         if (lines[i].kind === " ") {
-          out.push({ t: "pair", left: lines[i], right: lines[i] });
           i++;
           continue;
         }
@@ -91,8 +144,44 @@
         const adds: DiffLine[] = [];
         while (i < lines.length && lines[i].kind === "-") dels.push(lines[i++]);
         while (i < lines.length && lines[i].kind === "+") adds.push(lines[i++]);
+        for (let k = 0; k < Math.min(dels.length, adds.length); k++) {
+          const r = intraline(dels[k].text, adds[k].text);
+          if (r) {
+            marks.set(dels[k], r.old);
+            marks.set(adds[k], r.new);
+          }
+        }
+      }
+    }
+  }
+
+  const items = $derived.by(() => {
+    const out: Item[] = [];
+    if (!diff) return out;
+    computeMarks(diff);
+    diff.hunks.forEach((hunk, h) => {
+      out.push({ t: "hunk", h, header: hunk.header });
+      if (!split) {
+        hunk.lines.forEach((line, i) => out.push({ t: "line", line, h, i }));
+        return;
+      }
+      // 并排视图：把相邻的删除行和新增行配对
+      const lines = hunk.lines;
+      let i = 0;
+      while (i < lines.length) {
+        if (lines[i].kind === " ") {
+          out.push({ t: "pair", left: lines[i], right: lines[i], h, li: i, ri: i });
+          i++;
+          continue;
+        }
+        const dels: number[] = [];
+        const adds: number[] = [];
+        while (i < lines.length && lines[i].kind === "-") dels.push(i++);
+        while (i < lines.length && lines[i].kind === "+") adds.push(i++);
         for (let k = 0; k < Math.max(dels.length, adds.length); k++) {
-          out.push({ t: "pair", left: dels[k] ?? null, right: adds[k] ?? null });
+          const li = dels[k] ?? -1;
+          const ri = adds[k] ?? -1;
+          out.push({ t: "pair", left: lines[li] ?? null, right: lines[ri] ?? null, h, li, ri });
         }
       }
     });
@@ -124,7 +213,10 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === "Escape") onClose();
+    if (e.key !== "Escape") return;
+    // 有选中的行时 Esc 先取消选择
+    if (sel) sel = null;
+    else onClose();
   }
 </script>
 
@@ -182,31 +274,54 @@
                 <span class="hh">{it.header}</span>
                 {#if canStageHunk}
                   <span class="hunk-actions">
-                    {#if target.staged}
+                    {#if sel && sel.h === it.h}
+                      {#if target.staged}
+                        <button class="primary" onclick={() => linesAction(it.header, "unstage")}>{t("取消暂存选中的 {0} 行", sel.lines.size)}</button>
+                      {:else}
+                        <button class="primary" onclick={() => linesAction(it.header, "stage")}>{t("暂存选中的 {0} 行", sel.lines.size)}</button>
+                        <button class="danger" onclick={() => linesAction(it.header, "discard")}>{t("丢弃选中的行")}</button>
+                      {/if}
+                      <button onclick={() => (sel = null)}>{t("取消选择")}</button>
+                    {:else if target.staged}
                       <button onclick={() => hunkAction(it.header, "unstage")}>{t("取消暂存代码块")}</button>
                     {:else}
                       <button onclick={() => hunkAction(it.header, "stage")}>{t("暂存代码块")}</button>
                       <button class="danger" onclick={() => hunkAction(it.header, "discard")}>{t("丢弃")}</button>
+                      <span class="tip">{t("点行号可以只选几行")}</span>
                     {/if}
                   </span>
                 {/if}
               </div>
             {:else if it.t === "line"}
-              <div class="line k{it.line.kind === '+' ? 'add' : it.line.kind === '-' ? 'del' : 'ctx'}" style="height:{LINE_H}px">
-                <span class="no">{it.line.old ?? ""}</span>
-                <span class="no">{it.line.new ?? ""}</span>
+              {@const ln = it}
+              <div
+                class="line k{it.line.kind === '+' ? 'add' : it.line.kind === '-' ? 'del' : 'ctx'}"
+                class:picked={isSel(it.h, it.i)}
+                style="height:{LINE_H}px"
+              >
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <span class="gut" class:pick={canStageHunk && it.line.kind !== " "} onclick={(e) => toggleLine(e, ln.h, ln.i)}>
+                  <span class="no">{it.line.old ?? ""}</span>
+                  <span class="no">{it.line.new ?? ""}</span>
+                </span>
                 <span class="sign">{it.line.kind}</span>
-                <span class="code">{it.line.text}</span>
+                <span class="code">{@html html(it.line)}</span>
               </div>
             {:else}
+              {@const pr = it}
               <div class="line pair" style="height:{LINE_H}px">
-                <div class="half {it.left ? (it.left.kind === '-' ? 'kdel' : 'kctx') : 'kempty'}">
-                  <span class="no">{it.left?.old ?? ""}</span>
-                  <span class="code">{it.left?.text ?? ""}</span>
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div class="half {it.left ? (it.left.kind === '-' ? 'kdel' : 'kctx') : 'kempty'}" class:picked={isSel(it.h, it.li)}>
+                  <span class="no" class:pick={canStageHunk && it.left?.kind === "-"} onclick={(e) => toggleLine(e, pr.h, pr.li)}>{it.left?.old ?? ""}</span>
+                  <span class="code">{#if it.left}{@html html(it.left)}{/if}</span>
                 </div>
-                <div class="half {it.right ? (it.right.kind === '+' ? 'kadd' : 'kctx') : 'kempty'}">
-                  <span class="no">{it.right?.new ?? ""}</span>
-                  <span class="code">{it.right?.text ?? ""}</span>
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div class="half {it.right ? (it.right.kind === '+' ? 'kadd' : 'kctx') : 'kempty'}" class:picked={isSel(it.h, it.ri)}>
+                  <span class="no" class:pick={canStageHunk && it.right?.kind === "+"} onclick={(e) => toggleLine(e, pr.h, pr.ri)}>{it.right?.new ?? ""}</span>
+                  <span class="code">{#if it.right}{@html html(it.right)}{/if}</span>
                 </div>
               </div>
             {/if}
@@ -344,6 +459,38 @@
   }
   .kdel {
     background: var(--bg-del);
+  }
+  .kadd :global(.chg) {
+    border-radius: 2px;
+    background: var(--bg-add-strong);
+  }
+  .kdel :global(.chg) {
+    border-radius: 2px;
+    background: var(--bg-del-strong);
+  }
+  .gut {
+    display: flex;
+    flex-shrink: 0;
+  }
+  .pick {
+    cursor: pointer;
+  }
+  .pick:hover,
+  .gut.pick:hover .no {
+    color: var(--text);
+    background: var(--bg-hover);
+  }
+  /* 选中的行：左边一条强调色竖线 */
+  .picked {
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .picked .no {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .tip {
+    color: var(--text-faint);
+    font-size: 11.5px;
   }
   .kempty {
     background: var(--bg-empty);

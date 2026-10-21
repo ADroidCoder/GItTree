@@ -466,6 +466,75 @@ pub fn delete_branch(dir: &Path, name: &str, force: bool) -> Result<(), Error> {
     Ok(())
 }
 
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+pub struct Remote {
+    pub name: String,
+    pub url: String,
+    /// 和 url 不同时才有（git remote set-url --push）
+    pub push_url: Option<String>,
+}
+
+/// 所有远程仓库及地址
+pub fn remotes(dir: &Path) -> Result<Vec<Remote>, Error> {
+    let out = git(dir, &["remote", "-v"])?;
+    let mut list: Vec<Remote> = Vec::new();
+    for line in out.lines() {
+        // origin\tgit@host:a/b.git (fetch)
+        let Some((name, rest)) = line.split_once('\t') else { continue };
+        let Some((url, kind)) = rest.rsplit_once(' ') else { continue };
+        let i = match list.iter().position(|r| r.name == name) {
+            Some(i) => i,
+            None => {
+                list.push(Remote { name: name.to_string(), url: String::new(), push_url: None });
+                list.len() - 1
+            }
+        };
+        if kind == "(fetch)" {
+            list[i].url = url.to_string();
+        } else {
+            list[i].push_url = Some(url.to_string());
+        }
+    }
+    for r in &mut list {
+        if r.push_url.as_deref() == Some(r.url.as_str()) {
+            r.push_url = None;
+        }
+    }
+    Ok(list)
+}
+
+pub fn add_remote(dir: &Path, name: &str, url: &str) -> Result<(), Error> {
+    git(dir, &["remote", "add", name.trim(), url.trim()])?;
+    Ok(())
+}
+
+pub fn remove_remote(dir: &Path, name: &str) -> Result<(), Error> {
+    git(dir, &["remote", "remove", name])?;
+    Ok(())
+}
+
+pub fn rename_remote(dir: &Path, old: &str, new: &str) -> Result<(), Error> {
+    git(dir, &["remote", "rename", old, new.trim()])?;
+    Ok(())
+}
+
+pub fn set_remote_url(dir: &Path, name: &str, url: &str) -> Result<(), Error> {
+    git(dir, &["remote", "set-url", name, url.trim()])?;
+    Ok(())
+}
+
+/// 推送一个标签；tag 为空时推送所有标签
+pub fn push_tag(dir: &Path, remote: &str, tag: Option<&str>) -> Result<String, Error> {
+    match tag {
+        Some(tag) => git(dir, &["push", "--progress", remote, &format!("refs/tags/{tag}")]),
+        None => git(dir, &["push", "--progress", remote, "--tags"]),
+    }
+}
+
+pub fn delete_remote_tag(dir: &Path, remote: &str, tag: &str) -> Result<String, Error> {
+    git(dir, &["push", "--progress", remote, "--delete", &format!("refs/tags/{tag}")])
+}
+
 /// 分支跟踪的远程分支：(远程名, 远程上的分支名)
 fn tracking(dir: &Path, branch: &str) -> Option<(String, String)> {
     let remote = git(dir, &["config", "--get", &format!("branch.{branch}.remote")]).ok()?;

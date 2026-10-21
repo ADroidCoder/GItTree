@@ -57,12 +57,16 @@ Get the latest installer from the [**Releases page**](https://github.com/ADroidC
 - **Drag and drop** a branch onto another branch to merge or rebase.
 
 ### Everyday operations
-- Stage, unstage and discard by file or by hunk; commit and amend.
+- Stage, unstage and discard by file, by hunk or **by individual lines**; commit and amend.
+- **Syntax-highlighted diffs with word-level changes** — the exact characters that changed within a line are highlighted.
+- **Compare any two branches, tags or commits** — GitHub-style “changes since the common ancestor”, or a direct comparison of both ends, with the list of commits in between.
 - Fetch, pull and push with **live progress, elapsed time and cancellation**. Every executed git command and its full output is available in the log panel.
 - **In-app authentication** — when Git asks for a username, password, personal access token or SSH key passphrase, GitTree shows a dialog. Credentials are stored by your system credential manager (macOS Keychain / Windows Credential Manager).
 - **Background auto-fetch** (every 10 minutes by default, configurable or off).
 - **Stash** — browse stashed files and diffs (including untracked files), stash only selected files, apply / pop / drop.
-- Branches, tags, merge, rebase, cherry-pick, revert and reset from context menus.
+- Branches, tags, merge, rebase, cherry-pick, revert and reset from context menus. Rename branches (optionally on the remote too), push and delete tags on remotes, and force push with `--force-with-lease`.
+- **Remotes** — add, rename, remove and change URLs; copy a repository URL (credentials are stripped) or open its web page in the browser.
+- **Switch branches with uncommitted changes** — GitTree offers to stash them, switch, and restore them on the new branch.
 - **Clone** with progress, or **create** a new repository.
 - **Open in** your editor (VS Code by default; Cursor, IntelliJ IDEA etc. supported), terminal, or Finder / Explorer.
 

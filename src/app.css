@@ -18,6 +18,18 @@
   --bg-add: rgba(46, 160, 67, 0.14);
   --bg-del: rgba(220, 50, 50, 0.12);
   --bg-empty: rgba(0, 0, 0, 0.03);
+  /* 行内差异：改动行里真正变了的部分 */
+  --bg-add-strong: rgba(46, 160, 67, 0.34);
+  --bg-del-strong: rgba(220, 50, 50, 0.3);
+  /* 语法高亮 */
+  --syn-keyword: #cf222e;
+  --syn-string: #0a3069;
+  --syn-comment: #6e7781;
+  --syn-number: #0550ae;
+  --syn-title: #8250df;
+  --syn-type: #953800;
+  --syn-attr: #116329;
+  --syn-meta: #6639ba;
   --border: #dde1e8;
   --border-strong: #c9ced8;
   --text: #1f2430;
@@ -52,6 +64,16 @@
   --bg-add: rgba(123, 217, 56, 0.16);
   --bg-del: rgba(222, 78, 78, 0.18);
   --bg-empty: rgba(255, 255, 255, 0.025);
+  --bg-add-strong: rgba(123, 217, 56, 0.36);
+  --bg-del-strong: rgba(222, 78, 78, 0.42);
+  --syn-keyword: #c678dd;
+  --syn-string: #98c379;
+  --syn-comment: #7f848e;
+  --syn-number: #d19a66;
+  --syn-title: #61afef;
+  --syn-type: #e5c07b;
+  --syn-attr: #d19a66;
+  --syn-meta: #56b6c2;
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: #131418;
   --text: rgba(255, 255, 255, 0.88);
@@ -86,6 +108,16 @@
     --bg-add: rgba(123, 217, 56, 0.16);
     --bg-del: rgba(222, 78, 78, 0.18);
     --bg-empty: rgba(255, 255, 255, 0.025);
+    --bg-add-strong: rgba(123, 217, 56, 0.36);
+    --bg-del-strong: rgba(222, 78, 78, 0.42);
+    --syn-keyword: #c678dd;
+    --syn-string: #98c379;
+    --syn-comment: #7f848e;
+    --syn-number: #d19a66;
+    --syn-title: #61afef;
+    --syn-type: #e5c07b;
+    --syn-attr: #d19a66;
+    --syn-meta: #56b6c2;
     --border: rgba(255, 255, 255, 0.08);
     --border-strong: #131418;
     --text: rgba(255, 255, 255, 0.88);
@@ -208,4 +240,53 @@ textarea:focus {
 ::-webkit-scrollbar-track,
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* 语法高亮（highlight.js 的 class） */
+.hljs-keyword,
+.hljs-built_in,
+.hljs-literal,
+.hljs-selector-tag {
+  color: var(--syn-keyword);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-template-string,
+.hljs-addition {
+  color: var(--syn-string);
+}
+.hljs-comment,
+.hljs-quote,
+.hljs-doctag {
+  color: var(--syn-comment);
+  font-style: italic;
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--syn-number);
+}
+.hljs-title,
+.hljs-section,
+.hljs-name {
+  color: var(--syn-title);
+}
+.hljs-type,
+.hljs-class .hljs-title,
+.hljs-title.class_ {
+  color: var(--syn-type);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-property,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: var(--syn-attr);
+}
+.hljs-meta,
+.hljs-tag,
+.hljs-subst {
+  color: var(--syn-meta);
 }

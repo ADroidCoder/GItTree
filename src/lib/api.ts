@@ -14,6 +14,13 @@ export interface RefInfo {
   behind: number;
 }
 
+export interface Remote {
+  name: string;
+  url: string;
+  /** 和 url 不同时才有 */
+  push_url: string | null;
+}
+
 export interface HeadInfo {
   branch: string | null;
   oid: string | null;
@@ -110,6 +117,24 @@ export interface FileDiff {
   truncated: boolean;
 }
 
+export interface CompareCommit {
+  oid: string;
+  summary: string;
+  author: string;
+  time: number;
+}
+
+export interface Compare {
+  from: string;
+  to: string;
+  base: string | null;
+  files: FileChange[];
+  /** to 有、from 没有的提交（最多 500 个），新的在前 */
+  commits: CompareCommit[];
+  ahead: number;
+  behind: number;
+}
+
 export interface StatusEntry {
   path: string;
   old_path: string | null;
@@ -168,6 +193,14 @@ export type Op =
   | { op: "delete_remote_branch"; name: string }
   | { op: "rename_branch"; old: string; new: string; remote: boolean }
   | { op: "with_stash"; inner: Op; pop: boolean }
+  | { op: "stage_lines"; path: string; header: string; staged: boolean; lines: number[] }
+  | { op: "discard_lines"; path: string; header: string; lines: number[] }
+  | { op: "add_remote"; name: string; url: string }
+  | { op: "remove_remote"; name: string }
+  | { op: "rename_remote"; old: string; new: string }
+  | { op: "set_remote_url"; name: string; url: string }
+  | { op: "push_tag"; remote: string; tag: string | null }
+  | { op: "delete_remote_tag"; remote: string; tag: string }
   | { op: "merge"; target: string }
   | { op: "rebase"; onto: string }
   | { op: "sequencer"; kind: string; action: "abort" | "continue" }
@@ -279,6 +312,11 @@ export const api = {
   cloneRepo: (url: string, parent: string, name: string) => invoke<string>("clone_repo", { url, parent, name }),
   initRepo: (path: string) => invoke<void>("init_repo", { path }),
   rebasePlan: (repo: string, from: string) => invoke<PlanCommit[]>("rebase_plan", { repo, from }),
+  listRemotes: (repo: string) => invoke<Remote[]>("list_remotes", { repo }),
+  compare: (repo: string, from: string, to: string, threeDot: boolean) => invoke<Compare>("compare", { repo, from, to, threeDot }),
+  compareFileDiff: (repo: string, from: string, to: string, path: string, oldPath: string | null) =>
+    invoke<FileDiff | null>("compare_file_diff", { repo, from, to, path, oldPath }),
+  openUrl: (url: string) => invoke<void>("open_url", { url }),
   openIn: (repo: string, target: OpenTarget, path: string | null, editor: string | null) =>
     invoke<void>("open_in", { repo, target, path, editor }),
   askpassReply: (id: number, answer: string | null) => invoke<void>("askpass_reply", { id, answer }),

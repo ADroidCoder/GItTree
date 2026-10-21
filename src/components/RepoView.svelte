@@ -1,7 +1,8 @@
 <script lang="ts">
   import { t } from "../lib/i18n";
-  import type { RefInfo, Row, Stash } from "../lib/api";
-  import { app, confirm, dialog, openFlow, toast, type RepoTab } from "../lib/store.svelte";
+  import type { RefInfo, Remote, Row, Stash } from "../lib/api";
+  import { addRemote, app, confirm, copyRemoteUrl, dialog, openFlow, openRemoteWeb, toast, type RepoTab } from "../lib/store.svelte";
+  import { shareUrl } from "../lib/util";
   import Sidebar from "./Sidebar.svelte";
   import CommitGraph from "./CommitGraph.svelte";
   import CommitPanel from "./CommitPanel.svelte";
@@ -11,6 +12,7 @@
   import StashPanel from "./StashPanel.svelte";
   import ConflictView from "./ConflictView.svelte";
   import FileView from "./FileView.svelte";
+  import CompareView from "./CompareView.svelte";
 
   let { tab, active }: { tab: RepoTab; active: boolean } = $props();
 
@@ -53,6 +55,45 @@
       confirmText: t("创建"),
     });
     if (m) await tab.run({ op: "create_tag", name: r.input.trim(), oid, message: m.input || null });
+  }
+
+  // ---------- 远程仓库 ----------
+
+  async function editRemoteUrl(r: Remote) {
+    const d = await dialog({
+      title: t("修改 {0} 的地址", r.name),
+      input: { placeholder: "git@gitee.com:user/repo.git", value: r.url },
+      confirmText: t("保存"),
+    });
+    if (d?.input.trim() && d.input.trim() !== r.url) await tab.run({ op: "set_remote_url", name: r.name, url: d.input.trim() });
+  }
+
+  async function renameRemote(r: Remote) {
+    const d = await dialog({ title: t("重命名远程仓库"), input: { placeholder: t("远程仓库名称"), value: r.name }, confirmText: t("保存") });
+    if (d?.input.trim() && d.input.trim() !== r.name) await tab.run({ op: "rename_remote", old: r.name, new: d.input.trim() });
+  }
+
+  async function removeRemote(r: Remote) {
+    if (await confirm(t("删除远程仓库"), t("确定删除远程仓库 {0} 吗？\n只是删除本地的配置，不会影响服务器上的仓库。", r.name), t("删除"), true))
+      await tab.run({ op: "remove_remote", name: r.name });
+  }
+
+  function onRemoteMenu(e: MouseEvent, name: string | null) {
+    const r = tab.remotes.find((x) => x.name === name);
+    const items: MenuItem[] = [];
+    if (r) {
+      items.push(
+        { label: t("复制仓库地址"), hint: shareUrl(r.url), action: () => copyRemoteUrl(r) },
+        { label: t("在浏览器中打开"), action: () => openRemoteWeb(r) },
+        "sep",
+        { label: t("修改地址…"), action: () => editRemoteUrl(r) },
+        { label: t("重命名…"), action: () => renameRemote(r) },
+        { label: t("删除远程仓库 {0}…", r.name), danger: true, action: () => removeRemote(r) },
+        "sep",
+      );
+    }
+    items.push({ label: t("添加远程仓库…"), action: () => addRemote(tab) });
+    menu = { x: e.clientX, y: e.clientY, items };
   }
 
   async function renameBranch(r: RefInfo) {
@@ -141,6 +182,7 @@
         "sep",
         { label: t("从这里新建分支…"), action: () => createBranchAt(r.name, r.name) },
         { label: t("复制分支名"), action: () => copy(r.name) },
+        { label: t("与当前分支对比"), disabled: r.is_head, action: () => tab.openCompare(current, r.name) },
         "sep",
         { label: t("重命名…"), action: () => renameBranch(r) },
         { label: t("删除分支 {0}…", r.name), danger: true, disabled: r.is_head, action: () => deleteBranch(r) },
@@ -154,6 +196,7 @@
         "sep",
         { label: t("从这里新建分支…"), action: () => createBranchAt(r.name, r.name) },
         { label: t("复制分支名"), action: () => copy(r.name) },
+        { label: t("与当前分支对比"), disabled: r.is_head, action: () => tab.openCompare(current, r.name) },
         "sep",
         {
           label: t("删除远程分支 {0}…", r.name),
@@ -169,6 +212,20 @@
         { label: t("检出此标签（分离头指针）"), action: () => tab.run({ op: "checkout_detached", oid: r.oid }, t("正在检出…")) },
         { label: t("从这里新建分支…"), action: () => createBranchAt(r.oid, r.name) },
         { label: t("复制标签名"), action: () => copy(r.name) },
+        { label: t("与当前分支对比"), action: () => tab.openCompare(current, r.name) },
+        "sep",
+        ...tab.remotes.map((rm) => ({
+          label: t("推送到 {0}", rm.name),
+          action: () => tab.run({ op: "push_tag", remote: rm.name, tag: r.name }, t("正在推送标签 {0}…", r.name)),
+        })),
+        ...tab.remotes.map((rm) => ({
+          label: t("从 {0} 删除这个标签…", rm.name),
+          danger: true,
+          action: async () => {
+            if (await confirm(t("删除远程标签"), t("确定从 {0} 删除标签 {1} 吗？其他人将无法再获取这个标签。", rm.name, r.name), t("删除"), true))
+              await tab.run({ op: "delete_remote_tag", remote: rm.name, tag: r.name }, t("正在删除远程标签…"));
+          },
+        })),
         "sep",
         {
           label: t("删除标签 {0}", r.name),
@@ -244,6 +301,7 @@
           },
         },
         "sep",
+        { label: t("与当前分支对比"), action: () => tab.openCompare(current, row.oid) },
         {
           label: t("从这里开始交互式变基…"),
           hint: t("整理提交"),
@@ -313,15 +371,19 @@
 {:else}
   <div class="main" style="grid-template-columns: {sideW}px 1fr {panelW}px">
     <div class="side">
-      <Sidebar {tab} {onRefMenu} {onRefDblClick} {onStashMenu} {onRefDrop} />
+      <Sidebar {tab} {onRefMenu} {onRefDblClick} {onStashMenu} {onRefDrop} {onRemoteMenu} />
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="handle right" onpointerdown={dragResize("side")}></div>
     </div>
     <div class="center">
-      <div class="graph-wrap" class:hidden={!!tab.diff || !!tab.fileView}>
+      <div class="graph-wrap" class:hidden={!!tab.diff || !!tab.fileView || !!tab.compareView}>
         <CommitGraph {tab} {active} {onRowMenu} {onRefMenu} {onRefDblClick} {onRefDrop} />
       </div>
-      {#if tab.fileView && active}
+      {#if tab.compareView && active}
+        <div class="diff-wrap">
+          <CompareView {tab} view={tab.compareView} onClose={() => (tab.compareView = null)} />
+        </div>
+      {:else if tab.fileView && active}
         <div class="diff-wrap">
           <FileView {tab} view={tab.fileView} onClose={() => (tab.fileView = null)} />
         </div>

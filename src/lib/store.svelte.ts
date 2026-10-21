@@ -1,16 +1,27 @@
 import { t } from "./i18n";
-import { isMac } from "./util";
+import { isMac, shareUrl, webUrl } from "./util";
 import { autoArchive, loadTasks, saveTasks, type Board } from "./board";
 import { notifyInBackground, notifySettings } from "./notify.svelte";
-import { api, type AskPassRequest, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type RepoInfo, type Stash, type Status } from "./api";
+import { api, type AskPassRequest, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type Remote, type RepoInfo, type Stash, type Status } from "./api";
 
 export interface DiffTarget {
-  /** commit：某个提交里的文件；workdir：工作区文件；conflict：解决冲突 */
-  source: "commit" | "workdir" | "conflict";
+  /** commit：某个提交里的文件；workdir：工作区文件；conflict：解决冲突；compare：两个提交之间 */
+  source: "commit" | "workdir" | "conflict" | "compare";
   path: string;
   oldPath: string | null;
   oid?: string;
   staged?: boolean;
+  /** compare：对比的两端（提交号） */
+  from?: string;
+  to?: string;
+}
+
+/** 对比两个版本：分支名、标签名或提交号 */
+export interface CompareView {
+  from: string;
+  to: string;
+  /** 只看 to 相对共同祖先新增的改动 */
+  threeDot: boolean;
 }
 
 export interface LogLine {
@@ -55,6 +66,9 @@ let tabSeq = 0;
 /** 联网的操作，可能很慢，允许取消 */
 const NETWORK_OPS = new Set<string>(["fetch", "pull", "push", "flow_publish"]);
 
+/** 修改远程仓库配置的操作，完成后重新读取远程列表 */
+const REMOTE_OPS = new Set<string>(["add_remote", "remove_remote", "rename_remote", "set_remote_url"]);
+
 /** 会切换分支的操作：本地改动会被覆盖时可以先 stash */
 const SWITCH_OPS = new Set<string>(["checkout", "checkout_remote", "checkout_detached", "create_branch"]);
 const OVERWRITE = /would be overwritten by checkout|untracked working tree files would be overwritten|commit your changes or stash them before you switch/i;
@@ -93,6 +107,7 @@ export class RepoTab {
   repo = $state<RepoInfo | null>(null);
   status = $state<Status | null>(null);
   stashes = $state<Stash[]>([]);
+  remotes = $state<Remote[]>([]);
   selectedOid = $state<string | null>(null);
   selectedRow = $state<number | null>(null);
   /** 右侧面板显示提交详情、工作区还是 stash */
@@ -104,7 +119,17 @@ export class RepoTab {
   }
   set diff(v: DiffTarget | null) {
     this.#diff = v;
-    if (v) this.fileView = null;
+    if (v) {
+      this.fileView = null;
+      this.compareView = null;
+    }
+  }
+
+  /** 打开对比视图；to 为空时等用户输入 */
+  openCompare(from: string, to: string) {
+    this.#diff = null;
+    this.fileView = null;
+    this.compareView = { from, to, threeDot: true };
   }
   busy = $state<string | null>(null);
   /** 当前操作开始的时间，用来显示已用时间 */
@@ -118,6 +143,7 @@ export class RepoTab {
   logOpen = $state(false);
   /** 中间区域显示文件历史或 blame */
   fileView = $state<FileView | null>(null);
+  compareView = $state<CompareView | null>(null);
   /** 上次获取远程更新的时间（自动获取用） */
   lastFetch = Date.now();
   autoFetching: Promise<void> | null = null;
@@ -160,7 +186,7 @@ export class RepoTab {
       if (focus.length) repo = await api.setFocus(repo.path, focus);
       this.repo = repo;
       this.graphVersion++;
-      await Promise.all([this.refreshStatus(), this.refreshStashes(), this.refreshFlow()]);
+      await Promise.all([this.refreshStatus(), this.refreshStashes(), this.refreshFlow(), this.loadRemotes()]);
       // 有未提交的更改时默认显示工作区，否则显示 HEAD 提交
       if (this.changeCount > 0) {
         this.panel = "wip";
@@ -173,6 +199,16 @@ export class RepoTab {
     } finally {
       this.loading = false;
     }
+  }
+
+  async loadRemotes() {
+    if (!this.id) return;
+    this.remotes = await api.listRemotes(this.id).catch(() => []);
+  }
+
+  /** 推送标签等操作默认用的远程：有 origin 用 origin，否则用第一个 */
+  get defaultRemote(): Remote | undefined {
+    return this.remotes.find((r) => r.name === "origin") ?? this.remotes[0];
   }
 
   /** 刷新分支、历史和工作区状态。多次调用会合并成一次。 */
@@ -347,6 +383,7 @@ export class RepoTab {
         this.progressLine = "";
       }
       await this.refresh();
+      if (REMOTE_OPS.has(op.op)) await this.loadRemotes();
       if (label) this.busy = null;
     }
   }
@@ -411,6 +448,7 @@ export class RepoTab {
 
   openFile(path: string, mode: FileView["mode"], rev: string | null = null) {
     this.#diff = null;
+    this.compareView = null;
     this.fileView = { path, mode, rev };
   }
 
@@ -464,6 +502,7 @@ export class RepoTab {
 
   loadDiff(t: DiffTarget): Promise<FileDiff | null> {
     if (t.source === "commit") return api.commitFileDiff(this.id, t.oid!, t.path, t.oldPath);
+    if (t.source === "compare") return api.compareFileDiff(this.id, t.from!, t.to!, t.path, t.oldPath);
     return api.workdirDiff(this.id, t.path, !!t.staged);
   }
 }
@@ -678,6 +717,45 @@ async function offerForcePush(tab: RepoTab) {
     true,
   );
   if (ok) await forcePush(tab);
+}
+
+export function copyText(text: string) {
+  navigator.clipboard.writeText(text).then(
+    () => toast(t("已复制：{0}", text)),
+    () => toast(t("复制失败"), "error"),
+  );
+}
+
+/** 复制远程仓库地址（去掉地址里的密码 / token） */
+export function copyRemoteUrl(r: Remote) {
+  copyText(shareUrl(r.url));
+}
+
+/** 在浏览器里打开远程仓库的网页 */
+export function openRemoteWeb(r: Remote) {
+  const url = webUrl(r.url);
+  if (!url) return toast(t("认不出 {0} 的网页地址", r.url), "error");
+  api.openUrl(url).catch((e) => toast(errorText(e), "error"));
+}
+
+/** 添加远程仓库：先问名称，再问地址 */
+export async function addRemote(tab: RepoTab) {
+  const name = await dialog({
+    title: t("添加远程仓库"),
+    message: t("名称，例如 origin、upstream"),
+    input: { placeholder: t("远程仓库名称"), value: tab.remotes.length ? "upstream" : "origin" },
+    confirmText: t("下一步"),
+  });
+  if (!name?.input.trim()) return;
+  const url = await dialog({
+    title: t("添加远程仓库 {0}", name.input.trim()),
+    input: { placeholder: "git@gitee.com:user/repo.git", value: "" },
+    checkbox: { label: t("添加后立即获取"), value: true },
+    confirmText: t("添加"),
+  });
+  if (!url?.input.trim()) return;
+  if (await tab.run({ op: "add_remote", name: name.input.trim(), url: url.input.trim() }) && url.checkbox)
+    await tab.run({ op: "fetch" }, t("正在获取远程更新…"));
 }
 
 export async function confirm(title: string, message: string, confirmText = t("确定"), danger = false) {

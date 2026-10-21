@@ -3,8 +3,9 @@
   import { bestScore } from "../lib/fuzzy";
   import { lang, setLang, t } from "../lib/i18n";
   import { notifyDialog } from "../lib/notify.svelte";
-  import { activate, activeTab, app, closeTab, forcePush, openFlow, openIn, openRepo, recentRepos, setTheme, showTasks } from "../lib/store.svelte";
+  import { activate, activeTab, addRemote, app, closeTab, copyRemoteUrl, forcePush, openRemoteWeb, openFlow, openIn, openRepo, recentRepos, setTheme, showTasks } from "../lib/store.svelte";
   import { checkUpdate } from "../lib/updater.svelte";
+  import { shareUrl } from "../lib/util";
 
   let {
     toolbar,
@@ -47,6 +48,7 @@
         { group: g, label: t("恢复最近一次 stash"), keys: "huifu hf stash pop", run: () => tb.run({ op: "stash", action: "pop", index: 0 }, t("正在恢复 stash…")) },
         { group: g, label: t("撤销"), hint: `${mod}Z`, keys: "chexiao cx undo", run: () => tb.undo() },
         { group: g, label: t("刷新"), hint: `${mod}R`, keys: "shuaxin sx refresh reload", run: () => tb.refresh() },
+        { group: g, label: t("对比分支…"), keys: "duibi db compare diff branch", run: () => tb.openCompare(repo.head.branch ?? "HEAD", "") },
         { group: g, label: t("搜索提交"), hint: `${mod}F`, keys: "sousuo ss search find commit", run: () => toolbar?.focusSearch() },
         {
           group: g,
@@ -64,6 +66,25 @@
         },
         { group: g, label: t("查看 git 命令和输出日志"), keys: "rizhi rz log output", run: () => (tb.logOpen = true) },
         { group: g, label: t("关闭标签页"), keys: "guanbi gb close tab", run: () => closeTab(tb) },
+        ...tb.remotes.flatMap((r): Item[] => [
+          {
+            group: g,
+            label: tb.remotes.length > 1 ? t("复制 {0} 的地址", r.name) : t("复制仓库地址"),
+            hint: shareUrl(r.url),
+            keys: `fuzhi dizhi fzdz cangku copy url remote address ${r.name}`,
+            run: () => copyRemoteUrl(r),
+          },
+          {
+            group: g,
+            label: tb.remotes.length > 1 ? t("在浏览器中打开 {0}", r.name) : t("在浏览器中打开仓库"),
+            keys: `liulanqi llq wangye open browser web gitlab github gitee ${r.name}`,
+            run: () => openRemoteWeb(r),
+          },
+        ]),
+        { group: g, label: t("添加远程仓库…"), keys: "tianjia yuancheng tjyc add remote upstream", run: () => addRemote(tb) },
+        ...(tb.defaultRemote
+          ? [{ group: g, label: t("推送所有标签到 {0}", tb.defaultRemote.name), keys: "tuisong biaoqian tsbq push tags", run: () => tb.run({ op: "push_tag", remote: tb.defaultRemote!.name, tag: null }, t("正在推送标签…")) }]
+          : []),
       );
       if (tb.flow?.initialized) {
         const kinds: FlowKind[] = ["feature", "bugfix", "release", "hotfix"];

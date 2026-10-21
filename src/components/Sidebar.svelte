@@ -9,12 +9,15 @@
     onRefDblClick,
     onStashMenu,
     onRefDrop,
+    onRemoteMenu,
   }: {
     tab: RepoTab;
     onRefMenu: (e: MouseEvent, ref: RefInfo) => void;
     onRefDblClick: (ref: RefInfo) => void;
     onStashMenu: (e: MouseEvent, s: Stash) => void;
     onRefDrop: (e: MouseEvent, src: RefInfo, dst: RefInfo) => void;
+    /** 右键远程仓库（name 为空表示右键“远程”标题） */
+    onRemoteMenu: (e: MouseEvent, name: string | null) => void;
   } = $props();
 
   /** 拖动分支时，鼠标下面的目标分支 */
@@ -84,7 +87,13 @@
     }
     return [...groups.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([name, list]) => ({ name, count: list.length, tree: buildTree(list, `dir:remote:${name}`, 1) }));
+      .map(([name, list]) => ({ name, count: list.length, tree: buildTree(list, `dir:remote:${name}`, 1) }))
+      // 还没获取过（没有远程分支）的远程仓库也要显示，才能右键复制地址、删除
+      .concat(
+        filter.trim()
+          ? []
+          : tab.remotes.filter((r) => !groups.has(r.name)).map((r) => ({ name: r.name, count: 0, tree: buildTree([], `dir:remote:${r.name}`, 1) })),
+      );
   });
   const remoteCount = $derived(remotes.reduce((n, g) => n + g.count, 0));
   // 标签按版本号倒序，新版本在前面
@@ -187,10 +196,18 @@
       {@render folder(localTree, 0)}
     {/if}
 
-    {@render section("remote", "☁", t("远程"), remoteCount)}
+    <div class="sec-wrap" oncontextmenu={(e) => (e.preventDefault(), onRemoteMenu(e, null))} role="presentation">
+      {@render section("remote", "☁", t("远程"), remoteCount)}
+    </div>
     {#if isOpen("remote")}
       {#each remotes as g (g.name)}
-        <button class="folder" style="padding-left:14px" onclick={() => toggle(`remote:${g.name}`)}>
+        <button
+          class="folder"
+          style="padding-left:14px"
+          onclick={() => toggle(`remote:${g.name}`)}
+          oncontextmenu={(e) => (e.preventDefault(), onRemoteMenu(e, g.name))}
+          title={tab.remotes.find((r) => r.name === g.name)?.url ?? g.name}
+        >
           <span class="caret">{isOpen(`remote:${g.name}`) ? "▾" : "▸"}</span>
           <span class="fico">🌐</span>
           {g.name}
@@ -199,6 +216,8 @@
         {#if isOpen(`remote:${g.name}`)}
           {@render folder(g.tree, 1)}
         {/if}
+      {:else}
+        <button class="more" onclick={(e) => onRemoteMenu(e, null)}>{t("＋ 添加远程仓库")}</button>
       {/each}
     {/if}
 
