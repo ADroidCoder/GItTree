@@ -1,4 +1,5 @@
 import { t } from "./i18n";
+import { isMac } from "./util";
 import { autoArchive, loadTasks, saveTasks, type Board } from "./board";
 import { notifyInBackground, notifySettings } from "./notify.svelte";
 import { api, type AskPassRequest, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type RepoInfo, type Stash, type Status } from "./api";
@@ -312,7 +313,14 @@ export class RepoTab {
       return true;
     } catch (e) {
       this.addLog({ text: `✗ ${errorText(e)}`, transient: false, kind: "err" });
-      toast(errorText(e), "error");
+      // 分支还有没合并的提交，git 拒绝普通删除：不显示原始报错，改为询问要不要强制删除
+      const unmerged = op.op === "delete_branch" && !op.force && /not fully merged/i.test(errorText(e));
+      if (unmerged) {
+        const tab = this;
+        setTimeout(() => offerForceDelete(tab, op.name));
+      } else {
+        toast(errorText(e), "error");
+      }
       if (label && this.notifyDone()) notifyInBackground(this.name, t("{0}失败：{1}", opName(op.op), errorText(e).split("\n")[0]));
       // 普通推送因为远程有新提交被拒绝：说明原因，可以选择强制推送
       if (op.op === "push" && !op.force && /\[rejected\]|non-fast-forward|fetch first|stale info/i.test(errorText(e))) {
@@ -623,6 +631,16 @@ export async function forcePush(tab: RepoTab) {
     true,
   );
   if (ok) await tab.run({ op: "push", force: true }, t("正在强制推送…"));
+}
+
+async function offerForceDelete(tab: RepoTab, name: string) {
+  const ok = await confirm(
+    t("分支还没有合并"),
+    t("{0} 上有还没合并到当前分支（或它跟踪的远程分支）的提交，删除后这些提交就找不到了。\n确定要强制删除吗？删除后可以用「撤销」（{1}Z）找回。", name, isMac ? "⌘" : "Ctrl+"),
+    t("强制删除"),
+    true,
+  );
+  if (ok) await tab.run({ op: "delete_branch", name, force: true });
 }
 
 async function offerForcePush(tab: RepoTab) {

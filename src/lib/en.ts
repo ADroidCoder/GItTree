@@ -407,6 +407,11 @@ const en: Record<string, string> = {
   选择在提交图里显示哪些分支: "Choose which branches to show in the graph",
   "{0} 个分支": "{0} branch||{0} branches",
 
+  分支还没有合并: "Branch not fully merged",
+  "{0} 上有还没合并到当前分支（或它跟踪的远程分支）的提交，删除后这些提交就找不到了。\n确定要强制删除吗？删除后可以用「撤销」（{1}Z）找回。":
+    "{0} has commits that aren't merged into the current branch (or its upstream). Deleting it makes them hard to find.\nForce delete anyway? You can bring it back with Undo ({1}Z).",
+  强制删除: "Force delete",
+
   // ---------- 侧边栏 ----------
   "领先上游 {0} 个提交": "{0} commit ahead of upstream||{0} commits ahead of upstream",
   "落后上游 {0} 个提交": "{0} commit behind upstream||{0} commits behind upstream",
