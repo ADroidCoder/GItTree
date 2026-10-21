@@ -1,11 +1,12 @@
 mod askpass;
 mod background;
+mod forges;
 
 use gittree_core::tr;
 use gittree_core::gix::{self, ObjectId};
 use gittree_core::log::{self, Error, HeadInfo, Log, RefInfo, Timings};
 use gittree_core::flow::{self, FinishOptions, FlowConfig};
-use gittree_core::{conflict, diff, git2, history, ops, rebase, undo};
+use gittree_core::{bisect, conflict, diff, git2, history, identity, lfs, ops, rebase, reflog, submodule, undo, worktree};
 use notify::{RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -500,6 +501,28 @@ enum Op {
     /// tag 为空时推送所有标签
     PushTag { remote: String, tag: Option<String> },
     DeleteRemoteTag { remote: String, tag: String },
+    /// 在 .gitignore 里加规则
+    Ignore { patterns: Vec<String> },
+    /// path 为空时更新全部子模块
+    SubmoduleUpdate { path: Option<String> },
+    SubmoduleUpdateRemote { path: String },
+    SubmoduleSync { path: Option<String> },
+    SubmoduleAdd { url: String, path: String },
+    AddWorktree { path: String, branch: String, new_branch: bool, start: Option<String> },
+    RemoveWorktree { path: String, force: bool },
+    PruneWorktrees,
+    BisectStart { bad: String, good: String },
+    /// verdict：good、bad、skip；oid 为空时标记当前检出的提交
+    BisectMark { verdict: String, oid: Option<String> },
+    BisectReset,
+    LfsPull,
+    LfsFetch,
+    LfsTrack { pattern: String },
+    LfsUntrack { pattern: String },
+    SetLocalIdentity { name: String, email: String },
+    ClearLocalIdentity,
+    /// 把 PR 的代码拉到本地分支 local 并切换过去
+    CheckoutPull { remote: String, remote_ref: String, local: String, number: u64 },
 }
 
 impl Op {
@@ -537,6 +560,7 @@ impl Op {
             Op::MergeInto { branch, source } => (tr!("把 {source} 合并到 {branch}", "merge {source} into {branch}"), Keep),
             Op::RebaseBranch { branch, onto } => (tr!("把 {branch} 变基到 {onto}", "rebase {branch} onto {onto}"), Keep),
             Op::RebaseInteractive { steps, .. } => (tr!("交互式变基（{} 个提交）", "interactive rebase ({} commits)", steps.len()), Keep),
+            Op::CheckoutPull { number, .. } => (tr!("检出 PR #{number}", "checkout PR #{number}"), Keep),
             _ => return None,
         })
     }
@@ -651,6 +675,123 @@ async fn list_remotes(state: State<'_, AppState>, repo: String) -> CmdResult<Vec
     blocking(move || ops::remotes(&dir)).await
 }
 
+/// HEAD（或某个分支）的 reflog，用来找回丢失的提交
+#[derive(Serialize)]
+struct ReflogRow {
+    #[serde(flatten)]
+    entry: reflog::ReflogEntry,
+    /// 在提交图里的行号；不在图里（例如被 reset 掉、分支被删了）时为空
+    row: Option<u32>,
+}
+
+#[tauri::command]
+async fn reflog(state: State<'_, AppState>, repo: String, target: Option<String>) -> CmdResult<Vec<ReflogRow>> {
+    let session = state.get(&repo).map_err(|e| e.to_string())?;
+    let (dir, _) = dirs_of(&state, &repo)?;
+    blocking(move || {
+        let entries = reflog::reflog(&dir, target.as_deref(), 1000)?;
+        let s = lock(&session)?;
+        Ok(entries
+            .into_iter()
+            .map(|entry| {
+                let row = ObjectId::from_hex(entry.oid.as_bytes()).ok().and_then(|id| s.log.row_of.get(&id).copied());
+                ReflogRow { entry, row }
+            })
+            .collect())
+    })
+    .await
+}
+
+/// 不常变化的仓库信息：工作树、子模块、LFS。打开仓库和执行操作后读一次
+#[derive(Serialize)]
+struct RepoExtras {
+    worktrees: Vec<worktree::Worktree>,
+    submodules: Vec<submodule::Submodule>,
+    lfs: lfs::LfsInfo,
+    identity: identity::Identity,
+}
+
+#[tauri::command]
+async fn repo_extras(state: State<'_, AppState>, repo: String) -> CmdResult<RepoExtras> {
+    let (dir, _) = dirs_of(&state, &repo)?;
+    blocking(move || {
+        Ok(RepoExtras {
+            worktrees: worktree::list(&dir).unwrap_or_default(),
+            submodules: submodule::list(&dir).unwrap_or_default(),
+            lfs: lfs::info(&dir),
+            identity: identity::current(&dir),
+        })
+    })
+    .await
+}
+
+/// 二分查错的状态，只读文件，每次刷新都调用
+#[tauri::command]
+async fn bisect_state(state: State<'_, AppState>, repo: String) -> CmdResult<bisect::BisectState> {
+    let (dir, git_dir) = dirs_of(&state, &repo)?;
+    blocking(move || bisect::state(&dir, &git_dir)).await
+}
+
+#[tauri::command]
+async fn commit_signature(state: State<'_, AppState>, repo: String, oid: String) -> CmdResult<Option<ops::Signature>> {
+    let (dir, _) = dirs_of(&state, &repo)?;
+    blocking(move || ops::signature(&dir, &oid)).await
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+async fn image_pair(
+    state: State<'_, AppState>,
+    repo: String,
+    source: String,
+    oid: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+    staged: bool,
+    path: String,
+    old_path: Option<String>,
+) -> CmdResult<diff::ImagePair> {
+    let (dir, _) = dirs_of(&state, &repo)?;
+    blocking(move || {
+        diff::image_pair(&git2::Repository::open(dir)?, &source, oid.as_deref(), from.as_deref(), to.as_deref(), staged, &path, old_path.as_deref())
+    })
+    .await
+}
+
+// ---------- 提交身份 ----------
+// 每套身份是应用数据目录 identities/ 下的一个 git 配置文件
+
+fn identity_store(app: &AppHandle) -> Result<PathBuf, Error> {
+    Ok(app.path().app_data_dir()?.join("identities"))
+}
+
+#[tauri::command]
+async fn identity_profiles(app: AppHandle) -> CmdResult<Vec<identity::Profile>> {
+    blocking(move || identity::profiles(&identity_store(&app)?)).await
+}
+
+#[tauri::command]
+async fn identity_save_profile(
+    app: AppHandle,
+    id: Option<String>,
+    label: String,
+    name: String,
+    email: String,
+    signing_key: Option<String>,
+) -> CmdResult<String> {
+    blocking(move || identity::save_profile(&identity_store(&app)?, id.as_deref(), &label, &name, &email, signing_key.as_deref())).await
+}
+
+#[tauri::command]
+async fn identity_delete_profile(app: AppHandle, id: String) -> CmdResult<()> {
+    blocking(move || identity::delete_profile(&identity_store(&app)?, &id)).await
+}
+
+#[tauri::command]
+async fn identity_set_dirs(app: AppHandle, id: String, dirs: Vec<String>) -> CmdResult<()> {
+    blocking(move || identity::set_dirs(&identity_store(&app)?, &id, &dirs)).await
+}
+
 /// 用系统默认浏览器打开网页（只允许 http / https）
 #[tauri::command]
 fn open_url(url: String) -> CmdResult<()> {
@@ -663,6 +804,21 @@ fn open_url(url: String) -> CmdResult<()> {
     let r = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", &url]).spawn();
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let r = std::process::Command::new("xdg-open").arg(&url).spawn();
+    r.map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// 用文件管理器打开一个文件夹（例如别的工作树）
+#[tauri::command]
+fn reveal_path(path: String) -> CmdResult<()> {
+    if !Path::new(&path).is_dir() {
+        return Err(tr!("文件夹不存在：{path}", "Folder not found: {path}"));
+    }
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("open").arg(&path).spawn();
+    #[cfg(target_os = "windows")]
+    let r = std::process::Command::new("explorer").arg(path.replace('/', "\\")).spawn();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let r = std::process::Command::new("xdg-open").arg(&path).spawn();
     r.map(|_| ()).map_err(|e| e.to_string())
 }
 
@@ -852,8 +1008,26 @@ fn run_op(dir: &Path, git_dir: &Path, op: Op) -> Result<String, Error> {
             Op::SetRemoteUrl { name, url } => done(ops::set_remote_url(d, &name, &url)),
             Op::PushTag { remote, tag } => ops::push_tag(d, &remote, tag.as_deref()),
             Op::DeleteRemoteTag { remote, tag } => ops::delete_remote_tag(d, &remote, &tag),
+            Op::Ignore { patterns } => done(ops::ignore(d, &patterns)),
+            Op::SubmoduleUpdate { path } => submodule::update(d, path.as_deref()),
+            Op::SubmoduleUpdateRemote { path } => submodule::update_remote(d, &path),
+            Op::SubmoduleSync { path } => submodule::sync(d, path.as_deref()),
+            Op::SubmoduleAdd { url, path } => submodule::add(d, &url, &path),
+            Op::AddWorktree { path, branch, new_branch, start } => worktree::add(d, &path, &branch, new_branch, start.as_deref()),
+            Op::RemoveWorktree { path, force } => worktree::remove(d, &path, force),
+            Op::PruneWorktrees => worktree::prune(d),
+            Op::BisectStart { bad, good } => bisect::start(d, &bad, &good),
+            Op::BisectMark { verdict, oid } => bisect::mark(d, &verdict, oid.as_deref()),
+            Op::BisectReset => bisect::reset(d),
+            Op::LfsPull => lfs::pull(d),
+            Op::LfsFetch => lfs::fetch(d),
+            Op::LfsTrack { pattern } => lfs::track(d, &pattern),
+            Op::LfsUntrack { pattern } => lfs::untrack(d, &pattern),
+            Op::SetLocalIdentity { name, email } => done(identity::set_local(d, &name, &email)),
+            Op::ClearLocalIdentity => done(identity::clear_local(d)),
+            Op::CheckoutPull { remote, remote_ref, local, .. } => ops::checkout_pull(d, &remote, &remote_ref, &local),
             Op::WithStash { inner, pop } => {
-                let what = inner.undo_label().map(|(label, _)| label).unwrap_or_default();
+                let what = inner.undo_label().map(|(label, _)| label).unwrap_or_else(|| tr!("操作", "the operation"));
                 ops::with_stash(d, &what, pop, || run_op(d, git_dir, *inner))
             }
         }
@@ -935,7 +1109,21 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_lang,
             list_remotes,
+            reflog,
+            repo_extras,
+            bisect_state,
+            commit_signature,
+            image_pair,
+            identity_profiles,
+            identity_save_profile,
+            identity_delete_profile,
+            identity_set_dirs,
+            forges::forge_info,
+            forges::forge_new_pull_url,
+            forges::forge_configure,
+            forges::pull_requests,
             open_url,
+            reveal_path,
             open_repo,
             close_repo,
             refresh_repo,

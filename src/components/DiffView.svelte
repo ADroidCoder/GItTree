@@ -3,6 +3,7 @@
   import type { DiffLine, FileDiff } from "../lib/api";
   import { confirm, errorText, type DiffTarget, type RepoTab } from "../lib/store.svelte";
   import { intraline, languageOf, renderLine } from "../lib/highlight";
+  import ImageDiff, { isImage } from "./ImageDiff.svelte";
 
   let {
     tab,
@@ -203,6 +204,16 @@
 
   const canStageHunk = $derived(target.source === "workdir");
 
+  /** Git LFS 管理的文件：仓库里存的是指针，diff 里只看得到指针的变化 */
+  const lfsSizes = $derived.by(() => {
+    const lines = diff?.hunks.flatMap((h) => h.lines) ?? [];
+    if (!lines.some((l) => l.text.startsWith("version https://git-lfs.github.com/spec/"))) return null;
+    const size = (kind: string) => lines.find((l) => l.kind !== (kind === "-" ? "+" : "-") && l.text.startsWith("size "))?.text.slice(5);
+    return { old: size("-"), new: size("+") };
+  });
+  /** 图片：二进制的，或者是 LFS 指针 */
+  const showImage = $derived(isImage(target.path) && !!diff && (diff.binary || !!lfsSizes));
+
   async function hunkAction(header: string, action: "stage" | "unstage" | "discard") {
     if (action === "discard") {
       if (!(await confirm(t("丢弃代码块"), t("确定丢弃这个代码块的改动吗？此操作无法撤销。"), t("丢弃"), true))) return;
@@ -255,8 +266,19 @@
     <div class="msg">{t("加载中…")}</div>
   {:else if !diff}
     <div class="msg">{t("没有改动")}</div>
+  {:else if showImage}
+    <ImageDiff {tab} {target} />
   {:else if diff.binary}
     <div class="msg">{t("二进制文件，无法显示差异")}</div>
+  {:else if lfsSizes}
+    <div class="msg">
+      {t("这是 Git LFS 管理的文件，仓库里只保存了指向它的指针。")}
+      {#if lfsSizes.old && lfsSizes.new && lfsSizes.old !== lfsSizes.new}
+        <br />{t("文件大小：{0} → {1} 字节", lfsSizes.old, lfsSizes.new)}
+      {:else if lfsSizes.new}
+        <br />{t("文件大小：{0} 字节", lfsSizes.new)}
+      {/if}
+    </div>
   {:else if diff.hunks.length === 0}
     <div class="msg">{t("没有文本改动（可能只是文件权限变化）")}</div>
   {:else}

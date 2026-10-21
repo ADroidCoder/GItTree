@@ -1,8 +1,8 @@
 <script lang="ts">
   import { t } from "../lib/i18n";
   import { api, type StatusEntry } from "../lib/api";
-  import { confirm, dialog, errorText, openIn, toast, type RepoTab } from "../lib/store.svelte";
-  import { isMac } from "../lib/util";
+  import { app, confirm, dialog, errorText, ignorePatterns, openIn, toast, trackWithLfs, type RepoTab } from "../lib/store.svelte";
+  import { ignorePatternFor, isMac } from "../lib/util";
   import FileList, { type FileItem } from "./FileList.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
 
@@ -117,6 +117,28 @@
             { label: t("取消暂存{0}", n), action: () => unstageFiles(files) },
             { label: `Stash${n}…`, action: () => stashFiles(files) },
           ];
+    // 未跟踪的文件可以加入 .gitignore
+    const untracked = sec === "unstaged" ? files.filter((x) => x.status === "?") : [];
+    if (untracked.length > 1) {
+      items.push("sep", {
+        label: t("忽略这 {0} 个文件", untracked.length),
+        hint: ".gitignore",
+        action: () => ignorePatterns(tab, untracked.map((x) => ignorePatternFor(x.path))),
+      });
+    } else if (untracked.length === 1) {
+      const p = untracked[0].path;
+      const name = p.split("/").pop()!;
+      const ext = name.includes(".") && !name.startsWith(".") ? name.slice(name.lastIndexOf(".")) : null;
+      const dir = p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : null;
+      items.push("sep", { label: t("忽略这个文件"), hint: ".gitignore", action: () => ignorePatterns(tab, [ignorePatternFor(p)]) });
+      if (ext) items.push({ label: t("忽略所有 {0} 文件", ext), action: () => ignorePatterns(tab, [`*${ext}`]) });
+      if (dir) items.push({ label: t("忽略文件夹 {0}/", dir), action: () => ignorePatterns(tab, [`${ignorePatternFor(dir)}/`]) });
+    }
+    if (files.length === 1 && tab.extras?.lfs.installed && files[0].status !== "D") {
+      const name = files[0].path.split("/").pop()!;
+      const ext = name.includes(".") ? name.slice(name.lastIndexOf(".")) : null;
+      items.push({ label: t("用 Git LFS 管理{0}", ext ? ` *${ext}` : ""), action: () => trackWithLfs(tab, ext ? `*${ext}` : files[0].path) });
+    }
     if (files.length === 1) {
       const p = files[0].path;
       if (files[0].status !== "D")
@@ -294,6 +316,19 @@
   </div>
 
   <div class="commit-box">
+    <button
+      class="who"
+      class:warn={!tab.extras?.identity.email}
+      onclick={() => (app.identityDialog = tab)}
+      title={t("点击切换提交身份")}
+    >
+      {#if tab.extras?.identity.email}
+        {t("提交身份：")}<b>{tab.extras.identity.name}</b> &lt;{tab.extras.identity.email}&gt;
+        {#if tab.extras.identity.scope === "local"}<span class="scope">{t("本仓库")}</span>{/if}
+      {:else if tab.extras}
+        {t("⚠ 还没有设置提交身份（用户名和邮箱），点这里设置")}
+      {/if}
+    </button>
     <input class="summary" placeholder={t("提交说明（必填）")} bind:value={summary} onkeydown={onKey} maxlength="200" />
     <textarea placeholder={t("详细描述（可选）")} bind:value={description} onkeydown={onKey} rows="4"></textarea>
     <div class="commit-row">
@@ -401,6 +436,37 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .who {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    height: auto;
+    padding: 0 2px;
+    border: 0;
+    background: none;
+    color: var(--text-faint);
+    font-size: 11.5px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .who:hover {
+    color: var(--text);
+  }
+  .who b {
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+  .who.warn {
+    color: var(--del);
+  }
+  .scope {
+    padding: 0 4px;
+    border-radius: 3px;
+    background: var(--bg-hover);
   }
   .amend {
     display: flex;

@@ -5,7 +5,7 @@
   import { notifyDialog } from "../lib/notify.svelte";
   import FocusPicker from "./FocusPicker.svelte";
   import { api } from "../lib/api";
-  import { addRemote, app, chooseEditor, copyRemoteUrl, dialog, errorText, forcePush, openRemoteWeb, openFlow, openIn, setAutoFetch, setTheme, toast, type RepoTab, type Theme } from "../lib/store.svelte";
+  import { addRemote, addSubmodule, addWorktree, app, chooseEditor, copyRemoteUrl, createPull, dialog, errorText, forcePush, openRemoteWeb, openFlow, openIn, setAutoFetch, setTheme, startBisect, toast, trackWithLfs, type RepoTab, type Theme } from "../lib/store.svelte";
   import { isMac } from "../lib/util";
   import RepoPicker from "./RepoPicker.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
@@ -66,6 +66,40 @@
         { label: t("设置编辑器命令…"), action: chooseEditor },
       ],
     };
+  }
+
+  function showToolsMenu(e: MouseEvent) {
+    if (!tab) return;
+    const tb = tab;
+    const lfs = tb.extras?.lfs;
+    const email = tb.extras?.identity.email;
+    const items: MenuItem[] = [
+      { label: t("找回丢失的提交（Reflog）…"), action: () => tb.openTool("reflog") },
+      "sep",
+      { label: t("Pull Request / Merge Request"), disabled: !tb.remotes.length, action: () => tb.openTool("pulls") },
+      { label: t("为当前分支创建 PR…"), disabled: !tb.remotes.length || !tb.repo?.head.branch, action: () => createPull(tb) },
+      "sep",
+      { label: t("新建工作树…"), hint: "worktree", action: () => addWorktree(tb) },
+      ...(tb.extras?.submodules.length
+        ? [{ label: t("更新全部子模块"), action: () => tb.run({ op: "submodule_update", path: null }, t("正在更新子模块…")) }]
+        : []),
+      { label: t("添加子模块…"), action: () => addSubmodule(tb) },
+      "sep",
+      tb.bisect?.active
+        ? { label: t("结束二分查错"), action: () => tb.run({ op: "bisect_reset" }, t("正在结束二分查错…")) }
+        : { label: t("开始二分查错…"), hint: "bisect", action: () => startBisect(tb) },
+      "sep",
+    ];
+    if (lfs?.used && !lfs.installed) {
+      items.push({ label: t("Git LFS：没有安装 git-lfs"), disabled: true, action: () => {} });
+    } else if (lfs?.installed) {
+      items.push(
+        { label: t("Git LFS：拉取大文件"), disabled: !lfs.used, action: () => tb.run({ op: "lfs_pull" }, t("正在拉取 LFS 文件…")) },
+        { label: t("Git LFS：管理一类文件…"), hint: lfs.patterns.slice(0, 3).join(" "), action: () => trackWithLfs(tb, null) },
+      );
+    }
+    items.push("sep", { label: t("提交身份…"), hint: email ?? t("未设置"), action: () => (app.identityDialog = tb) });
+    flowMenu = { ...below(e), items };
   }
 
   function showPushMenu(e: MouseEvent) {
@@ -303,6 +337,10 @@
       <button class="tb" onclick={showFlowMenu} title="Git Flow：feature / release / hotfix">
         <span class="ico">⇶</span>Git Flow
         {#if curFlow}<span class="badge flow">{curFlow.kind}</span>{/if}
+      </button>
+      <button class="tb" onclick={showToolsMenu} title={t("Reflog、PR、工作树、子模块、二分查错、LFS、提交身份")}>
+        <span class="ico">⋯</span>{t("更多")}
+        {#if tab.bisect?.active}<span class="badge flow">bisect</span>{/if}
       </button>
     </div>
 

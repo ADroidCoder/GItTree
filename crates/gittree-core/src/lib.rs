@@ -1,12 +1,19 @@
+pub mod bisect;
 pub mod conflict;
 pub mod diff;
 pub mod flow;
+pub mod forge;
 pub mod graph;
 pub mod history;
+pub mod identity;
+pub mod lfs;
 pub mod log;
 pub mod ops;
 pub mod rebase;
+pub mod reflog;
+pub mod submodule;
 pub mod undo;
+pub mod worktree;
 
 pub use git2;
 pub use gix;

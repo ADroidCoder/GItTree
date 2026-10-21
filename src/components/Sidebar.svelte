@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from "../lib/i18n";
-  import type { RefInfo, Stash } from "../lib/api";
-  import { drag, type RepoTab } from "../lib/store.svelte";
+  import type { RefInfo, Stash, Submodule, Worktree } from "../lib/api";
+  import { drag, openRepo, type RepoTab } from "../lib/store.svelte";
 
   let {
     tab,
@@ -10,6 +10,8 @@
     onStashMenu,
     onRefDrop,
     onRemoteMenu,
+    onWorktreeMenu,
+    onSubmoduleMenu,
   }: {
     tab: RepoTab;
     onRefMenu: (e: MouseEvent, ref: RefInfo) => void;
@@ -18,7 +20,20 @@
     onRefDrop: (e: MouseEvent, src: RefInfo, dst: RefInfo) => void;
     /** 右键远程仓库（name 为空表示右键“远程”标题） */
     onRemoteMenu: (e: MouseEvent, name: string | null) => void;
+    onWorktreeMenu: (e: MouseEvent, w: Worktree) => void;
+    /** sm 为空表示右键“子模块”标题 */
+    onSubmoduleMenu: (e: MouseEvent, sm: Submodule | null) => void;
   } = $props();
+
+  /** 只有一个（仓库本身）时不显示工作树 */
+  const worktrees = $derived((tab.extras?.worktrees.length ?? 0) > 1 ? tab.extras!.worktrees : []);
+  const submodules = $derived(tab.extras?.submodules ?? []);
+  const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
+  const SM_STATE: Record<string, string> = {
+    uninitialized: t("未下载"),
+    modified: t("提交不一致"),
+    conflict: t("冲突"),
+  };
 
   /** 拖动分支时，鼠标下面的目标分支 */
   let dropOn = $state<string | null>(null);
@@ -231,6 +246,56 @@
       {/if}
     {/if}
 
+    {#if worktrees.length}
+      {@render section("worktree", "⧉", t("工作树"), worktrees.length)}
+      {#if isOpen("worktree")}
+        {#each worktrees as w (w.path)}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="item"
+            class:head={w.current}
+            class:missing={w.prunable}
+            style="padding-left:14px"
+            ondblclick={() => !w.current && !w.prunable && openRepo(w.path)}
+            oncontextmenu={(e) => (e.preventDefault(), onWorktreeMenu(e, w))}
+            title={w.prunable ? t("{0}（文件夹已经不存在）", w.path) : t("{0}\n双击在新标签页打开", w.path)}
+          >
+            <span class="mark">{w.current ? "✓" : ""}</span>
+            <span class="label">{folderName(w.path)}</span>
+            <span class="hint">{w.branch ?? w.head.slice(0, 7)}{w.main ? ` · ${t("主")}` : ""}</span>
+          </div>
+        {/each}
+      {/if}
+    {/if}
+
+    {#if submodules.length}
+      <div class="sec-wrap" oncontextmenu={(e) => (e.preventDefault(), onSubmoduleMenu(e, null))} role="presentation">
+        {@render section("submodule", "⊡", t("子模块"), submodules.length)}
+      </div>
+      {#if isOpen("submodule")}
+        {#each submodules.filter((m) => !f || m.path.toLowerCase().includes(f)) as m (m.path)}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="item"
+            class:missing={m.state === "uninitialized"}
+            style="padding-left:14px"
+            ondblclick={() =>
+              m.state === "uninitialized"
+                ? tab.run({ op: "submodule_update", path: m.path }, t("正在更新子模块…"))
+                : openRepo(`${tab.id.replace(/[\\/]+$/, "")}/${m.path}`)}
+            oncontextmenu={(e) => (e.preventDefault(), onSubmoduleMenu(e, m))}
+            title={`${m.url}\n${m.oid.slice(0, 10)} ${m.describe}\n${m.state === "uninitialized" ? t("双击初始化并下载") : t("双击在新标签页打开")}`}
+          >
+            <span class="mark"></span>
+            <span class="label">{m.path}</span>
+            {#if SM_STATE[m.state]}<span class="ab {m.state === 'uninitialized' ? '' : 'down'}">{SM_STATE[m.state]}</span>{/if}
+          </div>
+        {/each}
+      {/if}
+    {/if}
+
     {@render section("stash", "⊟", "Stash", stashes.length)}
     {#if isOpen("stash")}
       {#each stashes as s (s.oid)}
@@ -394,6 +459,15 @@
   }
   .down {
     color: var(--warn);
+  }
+  .hint {
+    flex-shrink: 0;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-faint);
+    font-size: 11.5px;
+    font-weight: normal;
   }
   .more {
     margin: 4px 14px;

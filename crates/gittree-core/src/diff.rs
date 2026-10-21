@@ -470,3 +470,109 @@ pub fn compare_file_diff(repo: &Repository, from: &str, to: &str, path: &str, ol
     }
     to_file_diff(&diff)
 }
+
+#[derive(Debug, Serialize)]
+pub struct ImageSide {
+    /// base64 编码的文件内容；文件太大或是没下载的 LFS 文件时为空
+    pub data: Option<String>,
+    pub size: u64,
+    /// 是 Git LFS 管理的文件
+    pub lfs: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImagePair {
+    pub old: Option<ImageSide>,
+    pub new: Option<ImageSide>,
+}
+
+/// 图片超过这么大就不显示
+const MAX_IMAGE: usize = 30 * 1024 * 1024;
+
+/// 图片差异的两边：改动前和改动后的文件内容。
+/// source 和界面上的差异一样：commit（oid）、compare（from → to）、workdir（staged 表示暂存区 → HEAD）
+#[allow(clippy::too_many_arguments)]
+pub fn image_pair(
+    repo: &Repository,
+    source: &str,
+    oid: Option<&str>,
+    from: Option<&str>,
+    to: Option<&str>,
+    staged: bool,
+    path: &str,
+    old_path: Option<&str>,
+) -> Result<ImagePair, Error> {
+    let old_path = old_path.unwrap_or(path);
+    let at_commit = |c: Option<git2::Commit>, p: &str| -> Option<Vec<u8>> {
+        let tree = c?.tree().ok()?;
+        let entry = tree.get_path(std::path::Path::new(p)).ok()?;
+        Some(repo.find_blob(entry.id()).ok()?.content().to_vec())
+    };
+    let commit = |rev: Option<&str>| rev.and_then(|r| repo.revparse_single(r).ok()).and_then(|o| o.peel_to_commit().ok());
+    let in_index = |p: &str| -> Option<Vec<u8>> {
+        let mut index = repo.index().ok()?;
+        // 暂存区可能在这个 Repository 打开后被别的 git 命令改过
+        index.read(false).ok()?;
+        let entry = index.get_path(std::path::Path::new(p), 0)?;
+        Some(repo.find_blob(entry.id).ok()?.content().to_vec())
+    };
+    let (old, new) = match source {
+        "commit" => {
+            let c = commit(oid);
+            (at_commit(c.as_ref().and_then(|c| c.parent(0).ok()), old_path), at_commit(c, path))
+        }
+        "compare" => (at_commit(commit(from), old_path), at_commit(commit(to), path)),
+        _ if staged => (at_commit(commit(Some("HEAD")), old_path), in_index(path)),
+        _ => {
+            let workdir = repo.workdir().ok_or_else(|| tr!("暂不支持裸仓库", "Bare repositories aren't supported yet"))?;
+            (in_index(path), std::fs::read(workdir.join(path)).ok())
+        }
+    };
+    let dir = repo.workdir().map(|d| d.to_path_buf());
+    let side = |data: Option<Vec<u8>>| {
+        data.map(|mut d| {
+            let mut lfs = false;
+            if crate::lfs::is_pointer(&d) {
+                lfs = true;
+                let size = crate::lfs::pointer_size(&d).unwrap_or(0);
+                match dir.as_deref().and_then(|dir| crate::ops::without_prompt(|| crate::lfs::smudge(dir, &d).ok())) {
+                    Some(real) if !crate::lfs::is_pointer(&real) => d = real,
+                    _ => return ImageSide { data: None, size, lfs },
+                }
+            }
+            let size = d.len() as u64;
+            ImageSide { data: (d.len() <= MAX_IMAGE).then(|| base64(&d)), size, lfs }
+        })
+    };
+    Ok(ImagePair { old: side(old), new: side(new) })
+}
+
+fn base64(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let n = (b[0] as u32) << 16 | (b[1] as u32) << 8 | b[2] as u32;
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn base64_matches_reference() {
+        assert_eq!(super::base64(b""), "");
+        assert_eq!(super::base64(b"f"), "Zg==");
+        assert_eq!(super::base64(b"fo"), "Zm8=");
+        assert_eq!(super::base64(b"foo"), "Zm9v");
+        assert_eq!(super::base64(b"foobar"), "Zm9vYmFy");
+        assert_eq!(super::base64(&[0xff, 0xfe, 0x00, 0x10]), "//4AEA==");
+    }
+}

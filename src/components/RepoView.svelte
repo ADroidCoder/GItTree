@@ -1,7 +1,8 @@
 <script lang="ts">
   import { t } from "../lib/i18n";
   import type { RefInfo, Remote, Row, Stash } from "../lib/api";
-  import { addRemote, app, confirm, copyRemoteUrl, dialog, openFlow, openRemoteWeb, toast, type RepoTab } from "../lib/store.svelte";
+  import { addRemote, addSubmodule, addWorktree, app, confirm, copyRemoteUrl, createPull, dialog, errorText, openFlow, openRemoteWeb, openRepo, toast, type RepoTab } from "../lib/store.svelte";
+  import { api, type Submodule, type Worktree } from "../lib/api";
   import { shareUrl } from "../lib/util";
   import Sidebar from "./Sidebar.svelte";
   import CommitGraph from "./CommitGraph.svelte";
@@ -13,6 +14,9 @@
   import ConflictView from "./ConflictView.svelte";
   import FileView from "./FileView.svelte";
   import CompareView from "./CompareView.svelte";
+  import ReflogView from "./ReflogView.svelte";
+  import PullsView from "./PullsView.svelte";
+  import BisectBar from "./BisectBar.svelte";
 
   let { tab, active }: { tab: RepoTab; active: boolean } = $props();
 
@@ -153,6 +157,76 @@
     if (d) await tab.run({ op: "delete_branch", name: r.name, force: d.checkbox });
   }
 
+  // ---------- 工作树 ----------
+
+  function onWorktreeMenu(e: MouseEvent, w: Worktree) {
+    const items: MenuItem[] = [
+      { label: t("在新标签页打开"), disabled: w.current, action: () => openRepo(w.path) },
+      { label: isMacLike ? t("在访达中显示") : t("在资源管理器中显示"), action: () => openPath(w.path) },
+      { label: t("复制路径"), action: () => copy(w.path) },
+    ];
+    if (!w.main) {
+      items.push("sep", {
+        label: t("删除工作树…"),
+        danger: true,
+        disabled: w.current,
+        action: async () => {
+          const d = await dialog({
+            title: t("删除工作树"),
+            message: t("删除 {0}？\n文件夹会被删掉，分支 {1} 本身不受影响。", w.path, w.branch ?? t("（分离头指针）")),
+            checkbox: { label: t("即使有没提交的改动也删除"), value: false },
+            confirmText: t("删除"),
+            danger: true,
+          });
+          if (d) await tab.run({ op: "remove_worktree", path: w.path, force: d.checkbox }, t("正在删除工作树…"));
+        },
+      });
+    }
+    if (tab.extras?.worktrees.some((x) => x.prunable)) items.push("sep", { label: t("清理已经不存在的工作树"), action: () => tab.run({ op: "prune_worktrees" }) });
+    items.push("sep", { label: t("新建工作树…"), action: () => addWorktree(tab) });
+    menu = { x: e.clientX, y: e.clientY, items };
+  }
+
+  const isMacLike = navigator.platform.toLowerCase().includes("mac");
+  function openPath(path: string) {
+    api.revealPath(path).catch((e) => toast(errorText(e), "error"));
+  }
+
+  // ---------- 子模块 ----------
+
+  function onSubmoduleMenu(e: MouseEvent, sm: Submodule | null) {
+    const items: MenuItem[] = [];
+    if (sm) {
+      const full = `${tab.id.replace(/[\\/]+$/, "")}/${sm.path}`;
+      items.push(
+        { label: t("在新标签页打开"), disabled: sm.state === "uninitialized", action: () => openRepo(full) },
+        {
+          label: sm.state === "uninitialized" ? t("初始化并下载") : t("更新到记录的提交"),
+          hint: "submodule update",
+          action: () => tab.run({ op: "submodule_update", path: sm.path }, t("正在更新子模块…")),
+        },
+        {
+          label: t("更新到远程最新的提交"),
+          hint: "--remote",
+          action: async () => {
+            if (await confirm(t("更新子模块"), t("把 {0} 更新到它远程分支上最新的提交？\n更新后父仓库里会出现一个改动，需要提交。", sm.path), t("更新")))
+              await tab.run({ op: "submodule_update_remote", path: sm.path }, t("正在更新子模块…"));
+          },
+        },
+        { label: t("同步地址"), hint: "submodule sync", action: () => tab.run({ op: "submodule_sync", path: sm.path }) },
+        "sep",
+        { label: t("复制地址"), hint: sm.url, action: () => copy(sm.url) },
+        { label: t("复制路径"), action: () => copy(sm.path) },
+        "sep",
+      );
+    }
+    items.push(
+      { label: t("更新全部子模块"), action: () => tab.run({ op: "submodule_update", path: null }, t("正在更新子模块…")) },
+      { label: t("添加子模块…"), action: () => addSubmodule(tab) },
+    );
+    menu = { x: e.clientX, y: e.clientY, items };
+  }
+
   function onRefMenu(e: MouseEvent, r: RefInfo) {
     const items: MenuItem[] = [];
     if (r.kind !== "tag") {
@@ -183,6 +257,8 @@
         { label: t("从这里新建分支…"), action: () => createBranchAt(r.name, r.name) },
         { label: t("复制分支名"), action: () => copy(r.name) },
         { label: t("与当前分支对比"), disabled: r.is_head, action: () => tab.openCompare(current, r.name) },
+        { label: t("在新工作树中检出…"), disabled: r.is_head, action: () => addWorktree(tab, r.name) },
+        { label: t("创建 Pull Request…"), disabled: !tab.remotes.length, action: () => createPull(tab, r.name) },
         "sep",
         { label: t("重命名…"), action: () => renameBranch(r) },
         { label: t("删除分支 {0}…", r.name), danger: true, disabled: r.is_head, action: () => deleteBranch(r) },
@@ -302,6 +378,7 @@
         },
         "sep",
         { label: t("与当前分支对比"), action: () => tab.openCompare(current, row.oid) },
+        ...bisectItems(row.oid),
         {
           label: t("从这里开始交互式变基…"),
           hint: t("整理提交"),
@@ -317,6 +394,37 @@
         { label: t("复制提交说明"), action: () => copy(row.summary) },
       ],
     };
+  }
+
+  /** 提交右键菜单里二分查错的选项 */
+  function bisectItems(oid: string): MenuItem[] {
+    const b = tab.bisect;
+    const short = oid.slice(0, 7);
+    if (b?.active) {
+      return [
+        "sep",
+        { label: t("二分查错：标记为好的（没问题）"), action: () => tab.run({ op: "bisect_mark", verdict: "good", oid }, t("正在标记…")) },
+        { label: t("二分查错：标记为坏的（有问题）"), action: () => tab.run({ op: "bisect_mark", verdict: "bad", oid }, t("正在标记…")) },
+        { label: t("二分查错：跳过这个提交"), action: () => tab.run({ op: "bisect_mark", verdict: "skip", oid }, t("正在标记…")) },
+      ];
+    }
+    return [
+      {
+        label: t("从这里开始二分查错…"),
+        hint: t("找出哪个提交引入了 bug"),
+        action: async () => {
+          const ok = await confirm(
+            t("二分查错"),
+            t(
+              "把 {0} 当作没问题的（好的）提交，当前的 HEAD 当作有问题的（坏的）提交。\ngit 会依次检出中间的提交，你测试后标记它好还是坏，几步之后就能找到第一个引入问题的提交。\n过程中会检出别的提交，请先提交或 stash 本地改动。",
+              short,
+            ),
+            t("开始"),
+          );
+          if (ok) await tab.run({ op: "bisect_start", bad: "HEAD", good: oid }, t("正在开始二分查错…"));
+        },
+      },
+    ];
   }
 
   function onStashMenu(e: MouseEvent, s: Stash) {
@@ -371,15 +479,20 @@
 {:else}
   <div class="main" style="grid-template-columns: {sideW}px 1fr {panelW}px">
     <div class="side">
-      <Sidebar {tab} {onRefMenu} {onRefDblClick} {onStashMenu} {onRefDrop} {onRemoteMenu} />
+      <Sidebar {tab} {onRefMenu} {onRefDblClick} {onStashMenu} {onRefDrop} {onRemoteMenu} {onWorktreeMenu} {onSubmoduleMenu} />
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="handle right" onpointerdown={dragResize("side")}></div>
     </div>
     <div class="center">
-      <div class="graph-wrap" class:hidden={!!tab.diff || !!tab.fileView || !!tab.compareView}>
+      {#if tab.bisect?.active}<BisectBar {tab} state={tab.bisect} />{/if}
+      <div class="graph-wrap" class:hidden={!!tab.diff || !!tab.fileView || !!tab.compareView || !!tab.toolView}>
         <CommitGraph {tab} {active} {onRowMenu} {onRefMenu} {onRefDblClick} {onRefDrop} />
       </div>
-      {#if tab.compareView && active}
+      {#if tab.toolView === "reflog" && active}
+        <div class="diff-wrap"><ReflogView {tab} onClose={() => (tab.toolView = null)} /></div>
+      {:else if tab.toolView === "pulls" && active}
+        <div class="diff-wrap"><PullsView {tab} onClose={() => (tab.toolView = null)} /></div>
+      {:else if tab.compareView && active}
         <div class="diff-wrap">
           <CompareView {tab} view={tab.compareView} onClose={() => (tab.compareView = null)} />
         </div>

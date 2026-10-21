@@ -3,7 +3,7 @@
   import { bestScore } from "../lib/fuzzy";
   import { lang, setLang, t } from "../lib/i18n";
   import { notifyDialog } from "../lib/notify.svelte";
-  import { activate, activeTab, addRemote, app, closeTab, copyRemoteUrl, forcePush, openRemoteWeb, openFlow, openIn, openRepo, recentRepos, setTheme, showTasks } from "../lib/store.svelte";
+  import { activate, activeTab, addRemote, addSubmodule, addWorktree, app, closeTab, copyRemoteUrl, createPull, forcePush, openRemoteWeb, openFlow, openIn, openRepo, recentRepos, setTheme, showTasks, startBisect, trackWithLfs } from "../lib/store.svelte";
   import { checkUpdate } from "../lib/updater.svelte";
   import { shareUrl } from "../lib/util";
 
@@ -85,6 +85,28 @@
         ...(tb.defaultRemote
           ? [{ group: g, label: t("推送所有标签到 {0}", tb.defaultRemote.name), keys: "tuisong biaoqian tsbq push tags", run: () => tb.run({ op: "push_tag", remote: tb.defaultRemote!.name, tag: null }, t("正在推送标签…")) }]
           : []),
+        { group: g, label: t("找回丢失的提交（Reflog）…"), keys: "zhaohui diushi tijiao zhdstj reflog recover lost commit", run: () => tb.openTool("reflog") },
+        ...(tb.remotes.length
+          ? [
+              { group: g, label: t("Pull Request / Merge Request"), keys: "pr mr hebing qingqiu hbqq pull request merge", run: () => tb.openTool("pulls") },
+              { group: g, label: t("为当前分支创建 PR…"), keys: "chuangjian cj pr mr create pull request", run: () => createPull(tb) },
+            ]
+          : []),
+        { group: g, label: t("新建工作树…"), keys: "gongzuoshu gzs worktree", run: () => addWorktree(tb) },
+        { group: g, label: t("添加子模块…"), keys: "zimokuai zmk submodule add", run: () => addSubmodule(tb) },
+        ...(tb.extras?.submodules.length
+          ? [{ group: g, label: t("更新全部子模块"), keys: "gengxin zimokuai gxzmk submodule update", run: () => tb.run({ op: "submodule_update", path: null }, t("正在更新子模块…")) }]
+          : []),
+        tb.bisect?.active
+          ? { group: g, label: t("结束二分查错"), keys: "erfen chacuo efcc bisect reset", run: () => tb.run({ op: "bisect_reset" }, t("正在结束二分查错…")) }
+          : { group: g, label: t("开始二分查错…"), keys: "erfen chacuo efcc bisect start bug", run: () => startBisect(tb) },
+        ...(tb.extras?.lfs.installed
+          ? [
+              { group: g, label: t("Git LFS：拉取大文件"), keys: "lfs dawenjian dwj pull large", run: () => tb.run({ op: "lfs_pull" }, t("正在拉取 LFS 文件…")) },
+              { group: g, label: t("Git LFS：管理一类文件…"), keys: "lfs track", run: () => trackWithLfs(tb, null) },
+            ]
+          : []),
+        { group: g, label: t("提交身份…"), hint: tb.extras?.identity.email ?? undefined, keys: "tijiao shenfen tjsf youxiang yx identity email user name author", run: () => (app.identityDialog = tb) },
       );
       if (tb.flow?.initialized) {
         const kinds: FlowKind[] = ["feature", "bugfix", "release", "hotfix"];

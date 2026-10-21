@@ -21,6 +21,7 @@
   import { startUpdater, updater } from "./lib/updater.svelte";
   import NotifyDialog from "./components/NotifyDialog.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
+  import IdentityDialog from "./components/IdentityDialog.svelte";
   import { notifyDialog, startNotifier } from "./lib/notify.svelte";
 
   let toolbar = $state<ReturnType<typeof Toolbar>>();
@@ -142,6 +143,9 @@
 {/if}
 {#if app.rebaseDialog}
   <RebaseDialog />
+{/if}
+{#if app.identityDialog}
+  <IdentityDialog tab={app.identityDialog} />
 {/if}
 {#if app.flowDialog}
   <FlowDialog />

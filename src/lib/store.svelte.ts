@@ -2,7 +2,7 @@ import { t } from "./i18n";
 import { isMac, shareUrl, webUrl } from "./util";
 import { autoArchive, loadTasks, saveTasks, type Board } from "./board";
 import { notifyInBackground, notifySettings } from "./notify.svelte";
-import { api, type AskPassRequest, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type Remote, type RepoInfo, type Stash, type Status } from "./api";
+import { api, type AskPassRequest, type BisectState, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type Remote, type RepoExtras, type RepoInfo, type Stash, type Status } from "./api";
 
 export interface DiffTarget {
   /** commit：某个提交里的文件；workdir：工作区文件；conflict：解决冲突；compare：两个提交之间 */
@@ -70,8 +70,12 @@ const NETWORK_OPS = new Set<string>(["fetch", "pull", "push", "flow_publish"]);
 const REMOTE_OPS = new Set<string>(["add_remote", "remove_remote", "rename_remote", "set_remote_url"]);
 
 /** 会切换分支的操作：本地改动会被覆盖时可以先 stash */
-const SWITCH_OPS = new Set<string>(["checkout", "checkout_remote", "checkout_detached", "create_branch"]);
+const SWITCH_OPS = new Set<string>(["checkout", "checkout_remote", "checkout_detached", "create_branch", "checkout_pull", "bisect_start", "bisect_mark"]);
 const OVERWRITE = /would be overwritten by checkout|untracked working tree files would be overwritten|commit your changes or stash them before you switch/i;
+/** 拉取被本地改动挡住 */
+const PULL_BLOCKED = /would be overwritten by merge|cannot pull with rebase|commit your changes or stash them before you merge|untracked working tree files would be overwritten by merge/i;
+/** 分支已经在另一个工作树里检出了 */
+const IN_WORKTREE = /already (?:checked out|used by worktree) at '([^']+)'/i;
 
 /** 通知里用的操作名 */
 function opName(op: Op["op"]) {
@@ -122,6 +126,7 @@ export class RepoTab {
     if (v) {
       this.fileView = null;
       this.compareView = null;
+      this.toolView = null;
     }
   }
 
@@ -129,7 +134,16 @@ export class RepoTab {
   openCompare(from: string, to: string) {
     this.#diff = null;
     this.fileView = null;
+    this.toolView = null;
     this.compareView = { from, to, threeDot: true };
+  }
+
+  /** 中间区域显示 reflog 或 PR 列表 */
+  openTool(v: "reflog" | "pulls") {
+    this.#diff = null;
+    this.fileView = null;
+    this.compareView = null;
+    this.toolView = v;
   }
   busy = $state<string | null>(null);
   /** 当前操作开始的时间，用来显示已用时间 */
@@ -144,6 +158,11 @@ export class RepoTab {
   /** 中间区域显示文件历史或 blame */
   fileView = $state<FileView | null>(null);
   compareView = $state<CompareView | null>(null);
+  toolView = $state<"reflog" | "pulls" | null>(null);
+  /** 工作树、子模块、LFS、提交身份：打开仓库和执行操作后读一次 */
+  extras = $state<RepoExtras | null>(null);
+  /** 二分查错的进度，没有在进行时 active 为 false */
+  bisect = $state<BisectState | null>(null);
   /** 上次获取远程更新的时间（自动获取用） */
   lastFetch = Date.now();
   autoFetching: Promise<void> | null = null;
@@ -186,7 +205,9 @@ export class RepoTab {
       if (focus.length) repo = await api.setFocus(repo.path, focus);
       this.repo = repo;
       this.graphVersion++;
-      await Promise.all([this.refreshStatus(), this.refreshStashes(), this.refreshFlow(), this.loadRemotes()]);
+      await Promise.all([this.refreshStatus(), this.refreshStashes(), this.refreshFlow(), this.loadRemotes(), this.loadExtras(), this.refreshBisect()]);
+      if (this.extras?.lfs.used && !this.extras.lfs.installed)
+        toast(t("这个仓库用了 Git LFS 管理大文件，但这台电脑没有安装 git-lfs，大文件只能看到指针。请安装 Git LFS（https://git-lfs.com）"), "error");
       // 有未提交的更改时默认显示工作区，否则显示 HEAD 提交
       if (this.changeCount > 0) {
         this.panel = "wip";
@@ -204,6 +225,20 @@ export class RepoTab {
   async loadRemotes() {
     if (!this.id) return;
     this.remotes = await api.listRemotes(this.id).catch(() => []);
+  }
+
+  async loadExtras() {
+    if (!this.id) return;
+    try {
+      this.extras = await api.repoExtras(this.id);
+    } catch {
+      // 读不到就保留上一次的
+    }
+  }
+
+  async refreshBisect() {
+    if (!this.id) return;
+    this.bisect = await api.bisectState(this.id).catch(() => null);
   }
 
   /** 推送标签等操作默认用的远程：有 origin 用 origin，否则用第一个 */
@@ -224,12 +259,12 @@ export class RepoTab {
           this.refreshAgain = false;
           this.repo = await api.refreshRepo(this.id);
           this.graphVersion++;
-          // 历史重新加载后行号可能变了，按提交哈希找回选中的行
-          if (this.selectedOid) {
+          // 历史重新加载后行号可能变了，按提交哈希找回选中的行（从 reflog 打开的、不在图里的提交保持不变）
+          if (this.selectedOid && this.selectedRow !== null) {
             this.selectedRow = await api.rowOf(this.id, this.selectedOid);
             if (this.selectedRow === null) this.selectedOid = null;
           }
-          await Promise.all([this.refreshStatus(), this.refreshStashes(), this.refreshFlow()]);
+          await Promise.all([this.refreshStatus(), this.refreshStashes(), this.refreshFlow(), this.refreshBisect()]);
         } while (this.refreshAgain);
       } catch (e) {
         toast(errorText(e), "error");
@@ -355,14 +390,19 @@ export class RepoTab {
       this.addLog({ text: `✗ ${errorText(e)}`, transient: false, kind: "err" });
       // 分支还有没合并的提交，git 拒绝普通删除：不显示原始报错，改为询问要不要强制删除
       const unmerged = op.op === "delete_branch" && !op.force && /not fully merged/i.test(errorText(e));
-      // 切换分支会覆盖本地改动：不显示原始报错，改为询问要不要先 stash
+      // 切换分支或拉取会覆盖本地改动：不显示原始报错，改为询问要不要先 stash
       const blocked = SWITCH_OPS.has(op.op) && OVERWRITE.test(errorText(e));
+      const pullBlocked = op.op === "pull" && PULL_BLOCKED.test(errorText(e));
+      const inWorktree = SWITCH_OPS.has(op.op) ? IN_WORKTREE.exec(errorText(e)) : null;
       if (unmerged) {
         const tab = this;
         setTimeout(() => offerForceDelete(tab, op.name));
-      } else if (blocked) {
+      } else if (blocked || pullBlocked) {
         const tab = this;
-        setTimeout(() => offerStashSwitch(tab, op, label, errorText(e)));
+        setTimeout(() => offerStash(tab, op, label, errorText(e), pullBlocked ? "pull" : "switch"));
+      } else if (inWorktree) {
+        const path = inWorktree[1];
+        setTimeout(() => offerOpenWorktree(path));
       } else {
         toast(errorText(e), "error");
       }
@@ -384,6 +424,7 @@ export class RepoTab {
       }
       await this.refresh();
       if (REMOTE_OPS.has(op.op)) await this.loadRemotes();
+      await this.loadExtras();
       if (label) this.busy = null;
     }
   }
@@ -449,6 +490,7 @@ export class RepoTab {
   openFile(path: string, mode: FileView["mode"], rev: string | null = null) {
     this.#diff = null;
     this.compareView = null;
+    this.toolView = null;
     this.fileView = { path, mode, rev };
   }
 
@@ -481,6 +523,18 @@ export class RepoTab {
     this.selectedRow = row;
     this.selectedOid = oid;
     this.panel = "commit";
+  }
+
+  /** 查看一个提交；不在提交图里（row 为空）时也能在右侧看详情 */
+  showCommit(oid: string, row: number | null) {
+    if (row !== null) {
+      this.select(row, oid);
+      this.scrollTo(row);
+    } else {
+      this.selectedRow = null;
+      this.selectedOid = oid;
+      this.panel = "commit";
+    }
   }
 
   showWip() {
@@ -541,6 +595,8 @@ export const app = $state({
   activeKey: 0,
   toasts: [] as Toast[],
   dialog: null as DialogSpec | null,
+  /** 提交身份设置对话框 */
+  identityDialog: null as RepoTab | null,
   flowDialog: null as FlowDialogSpec | null,
 });
 
@@ -681,20 +737,32 @@ export async function forcePush(tab: RepoTab) {
   if (ok) await tab.run({ op: "push", force: true }, t("正在强制推送…"));
 }
 
-async function offerStashSwitch(tab: RepoTab, op: Op, label: string | undefined, error: string) {
+async function offerStash(tab: RepoTab, op: Op, label: string | undefined, error: string, kind: "switch" | "pull") {
   // git 的报错里，会被覆盖的文件每行一个，以制表符开头
   const files = error
     .split("\n")
     .filter((l) => /^\t/.test(l))
     .map((l) => l.trim());
   const list = files.slice(0, 8).join("\n") + (files.length > 8 ? `\n${t("…还有 {0} 个文件", files.length - 8)}` : "");
+  const pull = kind === "pull";
   const d = await dialog({
     title: t("本地改动会被覆盖"),
-    message: t("切换会覆盖下面这些文件里还没提交的改动，可以先把改动 stash 起来再切换。\n\n{0}", list || "—"),
-    checkbox: { label: t("切换后恢复这些改动（stash pop）"), value: true },
-    confirmText: t("Stash 并切换"),
+    message: pull
+      ? t("拉取下来的提交会改动下面这些文件，而它们还有没提交的改动。可以先把改动 stash 起来，拉取后再恢复。\n\n{0}", list || "—")
+      : t("切换会覆盖下面这些文件里还没提交的改动，可以先把改动 stash 起来再切换。\n\n{0}", list || "—"),
+    checkbox: { label: pull ? t("拉取后恢复这些改动（stash pop）") : t("切换后恢复这些改动（stash pop）"), value: true },
+    confirmText: pull ? t("Stash 并拉取") : t("Stash 并切换"),
   });
-  if (d) await tab.run({ op: "with_stash", inner: op, pop: d.checkbox }, label ?? t("正在切换分支…"));
+  if (d) await tab.run({ op: "with_stash", inner: op, pop: d.checkbox }, label ?? (pull ? t("正在拉取…") : t("正在切换分支…")));
+}
+
+async function offerOpenWorktree(path: string) {
+  const ok = await confirm(
+    t("分支在另一个工作树里"),
+    t("这个分支已经在工作树 {0} 里检出了，同一个分支不能同时在两个地方检出。\n要打开那个工作树吗？", path),
+    t("打开工作树"),
+  );
+  if (ok) await openRepo(path);
 }
 
 async function offerForceDelete(tab: RepoTab, name: string) {
@@ -717,6 +785,136 @@ async function offerForcePush(tab: RepoTab) {
     true,
   );
   if (ok) await forcePush(tab);
+}
+
+/** 当前分支对应的远程仓库：跟踪的远程，没有就用默认的 */
+function remoteOf(tab: RepoTab, branch: RefInfo | undefined): Remote | undefined {
+  const name = branch?.upstream?.split("/")[0];
+  return tab.remotes.find((r) => r.name === name) ?? tab.defaultRemote;
+}
+
+/** 在浏览器里为分支创建 PR / MR（默认当前分支） */
+export async function createPull(tab: RepoTab, branchName?: string) {
+  const refs = tab.repo?.refs ?? [];
+  const name = branchName ?? tab.repo?.head.branch;
+  const branch = refs.find((r) => r.kind === "local" && r.name === name);
+  if (!branch) return toast(t("请先检出一个分支"), "error");
+  const remote = remoteOf(tab, branch);
+  if (!remote) return toast(t("这个仓库还没有配置远程仓库"), "error");
+  const info = await api.forgeInfo(remote.url).catch((e) => (toast(errorText(e), "error"), null));
+  if (!info) return;
+  // 公司自己部署的平台认不出来：到 PR 页面里选
+  if (!info.kind) return tab.openTool("pulls");
+  let source = branch.upstream ? branch.upstream.slice(remote.name.length + 1) : branch.name;
+  if (!branch.upstream || branch.ahead > 0) {
+    const ok = await confirm(
+      branch.upstream ? t("还有没推送的提交") : t("分支还没有推送"),
+      branch.upstream
+        ? t("{0} 有 {1} 个提交还没推送，PR 里不会包含它们。先推送吗？", branch.name, branch.ahead)
+        : t("{0} 还没有推送到远程仓库，要先推送才能创建 PR。现在推送吗？", branch.name),
+      t("推送"),
+    );
+    if (ok) {
+      if (!branch.is_head) return toast(t("请先切换到 {0} 再推送", branch.name), "error");
+      if (!(await tab.run({ op: "push", force: false }, t("正在推送…")))) return;
+      source = tab.repo?.refs.find((r) => r.kind === "local" && r.name === branch.name)?.upstream?.slice(remote.name.length + 1) ?? branch.name;
+    } else if (!branch.upstream) return;
+  }
+  const remoteBranches = refs.filter((r) => r.kind === "remote" && r.name.startsWith(remote.name + "/")).map((r) => r.name.slice(remote.name.length + 1));
+  const guess = ["main", "master", "develop", "dev"].find((b) => remoteBranches.includes(b) && b !== source) ?? "main";
+  const d = await dialog({
+    title: info.kind === "gitlab" ? t("创建 Merge Request") : t("创建 Pull Request"),
+    message: t("把 {0} 合并到哪个分支？会在浏览器里打开 {1} 的创建页面。", source, info.project.host),
+    input: { placeholder: t("目标分支"), value: guess },
+    confirmText: t("在浏览器中创建"),
+  });
+  if (!d?.input.trim()) return;
+  try {
+    await api.openUrl(await api.forgeNewPullUrl(remote.url, source, d.input.trim()));
+  } catch (e) {
+    toast(errorText(e), "error");
+  }
+}
+
+// ---------- 工作树、子模块 ----------
+
+/** 新工作树默认放在仓库旁边：<仓库名>-<分支名> */
+function defaultWorktreePath(tab: RepoTab, branch: string) {
+  const sep = tab.id.includes("\\") ? "\\" : "/";
+  return `${tab.id.replace(/[\\/]+$/, "")}-${branch.replace(/[\\/:*?"<>|\s]+/g, "-")}`.replace(/\//g, sep);
+}
+
+/** 在新工作树里检出分支；branch 为空时新建分支 */
+export async function addWorktree(tab: RepoTab, branch?: string) {
+  let name = branch;
+  let isNew = false;
+  if (!name) {
+    const d = await dialog({
+      title: t("新建工作树"),
+      message: t("把一个分支检出到另一个文件夹，两边可以同时修改、编译，不用来回切换和 stash。\n输入已有的分支名，或者一个新的分支名（从当前 HEAD 创建）。"),
+      input: { placeholder: t("分支名称"), value: "" },
+      confirmText: t("下一步"),
+    });
+    name = d?.input.trim();
+    if (!name) return;
+    isNew = !tab.repo?.refs.some((r) => r.kind === "local" && r.name === name);
+  }
+  const d = await dialog({
+    title: isNew ? t("新建分支 {0} 并放到新工作树", name) : t("在新工作树中检出 {0}", name),
+    message: t("工作树的文件夹（不能已经存在）"),
+    input: { placeholder: t("文件夹路径"), value: defaultWorktreePath(tab, name) },
+    checkbox: { label: t("创建后在新标签页打开"), value: true },
+    confirmText: t("创建"),
+  });
+  const path = d?.input.trim();
+  if (!d || !path) return;
+  const ok = await tab.run({ op: "add_worktree", path, branch: name, new_branch: isNew, start: isNew ? "HEAD" : null }, t("正在创建工作树…"));
+  if (ok && d.checkbox) await openRepo(path);
+}
+
+export async function addSubmodule(tab: RepoTab) {
+  const u = await dialog({
+    title: t("添加子模块"),
+    input: { placeholder: "git@gitee.com:user/lib.git", value: "" },
+    confirmText: t("下一步"),
+  });
+  const url = u?.input.trim();
+  if (!url) return;
+  const guess = url.replace(/\.git$/, "").split(/[/:]/).pop() ?? "lib";
+  const p = await dialog({ title: t("放到哪个目录"), message: t("仓库里的相对路径"), input: { placeholder: "libs/name", value: guess }, confirmText: t("添加") });
+  if (p?.input.trim()) await tab.run({ op: "submodule_add", url, path: p.input.trim() }, t("正在添加子模块…"));
+}
+
+/** 开始二分查错：当前 HEAD 有问题，问一个没问题的版本 */
+export async function startBisect(tab: RepoTab) {
+  const tags = (tab.repo?.refs ?? []).filter((r) => r.kind === "tag").sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
+  const d = await dialog({
+    title: t("开始二分查错"),
+    message: t(
+      "当前检出的 {0} 有问题。输入一个确定没问题的版本（标签、分支或提交号），git 会在两者之间一步步帮你找出第一个引入问题的提交。\n也可以在提交图里右键一个提交，选「从这里开始二分查错」。",
+      tab.repo?.head.branch ?? "HEAD",
+    ),
+    input: { placeholder: t("没问题的版本，例如 v1.2.0"), value: tags[0]?.name ?? "" },
+    confirmText: t("开始"),
+  });
+  if (d?.input.trim()) await tab.run({ op: "bisect_start", bad: "HEAD", good: d.input.trim() }, t("正在开始二分查错…"));
+}
+
+/** 让 Git LFS 管理一类文件，pattern 为空时询问 */
+export async function trackWithLfs(tab: RepoTab, pattern: string | null) {
+  const d = await dialog({
+    title: t("用 Git LFS 管理"),
+    message: t("符合规则的文件以后会存到 LFS 服务器上，仓库里只保存指针。会修改 .gitattributes，记得提交它。\n已经提交过的文件不受影响。"),
+    input: { placeholder: "*.psd", value: pattern ?? "" },
+    confirmText: t("确定"),
+  });
+  if (d?.input.trim()) await tab.run({ op: "lfs_track", pattern: d.input.trim() });
+}
+
+/** 把未跟踪的文件加入 .gitignore */
+export async function ignorePatterns(tab: RepoTab, patterns: string[]) {
+  if (await tab.run({ op: "ignore", patterns }))
+    toast(patterns.length === 1 ? t("已加入 .gitignore：{0}", patterns[0]) : t("已把 {0} 个文件加入 .gitignore", patterns.length));
 }
 
 export function copyText(text: string) {

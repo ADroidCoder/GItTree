@@ -78,3 +78,10 @@ export function webUrl(remote: string): string | null {
 export function shareUrl(remote: string): string {
   return remote.trim().replace(/^(https?:\/\/)[^@/]+@/, "$1");
 }
+
+/** 只匹配这一个路径的 .gitignore 规则：以 / 开头，转义通配符（和后端 ops::ignore_pattern_for 一样） */
+export function ignorePatternFor(path: string): string {
+  let out = "/" + path.replace(/[*?[\\!#]/g, "\\$&");
+  if (out.endsWith(" ")) out = out.slice(0, -1) + "\\ ";
+  return out;
+}

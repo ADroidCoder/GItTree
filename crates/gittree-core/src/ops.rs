@@ -73,6 +73,15 @@ pub fn git_env(dir: &Path, args: &[&str], envs: &[(&str, &str)]) -> Result<Strin
 }
 
 fn git_full(dir: &Path, args: &[&str], input: Option<&[u8]>, envs: &[(&str, &str)]) -> Result<String, Error> {
+    git_raw(dir, args, input, envs).map(|out| String::from_utf8_lossy(&out).into_owned())
+}
+
+/// 输出是二进制内容时用（例如 git lfs smudge 输出的图片）
+pub fn git_bytes(dir: &Path, args: &[&str], input: Option<&[u8]>) -> Result<Vec<u8>, Error> {
+    git_raw(dir, args, input, &[])
+}
+
+fn git_raw(dir: &Path, args: &[&str], input: Option<&[u8]>, envs: &[(&str, &str)]) -> Result<Vec<u8>, Error> {
     let mut c = command(dir);
     c.args(args);
     for (k, v) in envs {
@@ -93,12 +102,12 @@ fn git_full(dir: &Path, args: &[&str], input: Option<&[u8]>, envs: &[(&str, &str
         }
         Some(p) => run_streaming(child, args, &p)?,
     };
-    let stdout = String::from_utf8_lossy(&stdout).into_owned();
     if status.success() {
         Ok(stdout)
     } else if progress_cancelled() {
         Err(tr!("已取消", "Cancelled").into())
     } else {
+        let stdout = String::from_utf8_lossy(&stdout);
         let stderr = String::from_utf8_lossy(&stderr);
         let msg = if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() };
         Err(tr!("git {} 失败：\n{}", "git {} failed:\n{}", args.first().unwrap_or(&""), msg).into())
@@ -445,8 +454,8 @@ pub fn with_stash(dir: &Path, what: &str, pop: bool, f: impl FnOnce() -> Result<
     // 恢复时冲突：git 会保留这条 stash，冲突留在工作区里给用户解决
     git(dir, &["stash", "pop"]).map_err(|e| {
         tr!(
-            "已经切换过去了，但恢复改动时有冲突。请解决冲突；原来的改动还保存在 stash 里，确认没问题后可以把它删掉。\n\n{e}",
-            "Switched, but restoring your changes caused conflicts. Resolve them; your original changes are still in the stash and can be dropped once you're done.\n\n{e}"
+            "{what}已经完成，但恢复改动时有冲突。请解决冲突；原来的改动还保存在 stash 里，确认没问题后可以把它删掉。\n\n{e}",
+            "{what} is done, but restoring your changes caused conflicts. Resolve them; your original changes are still in the stash and can be dropped once you're done.\n\n{e}"
         )
     })?;
     Ok(out)
@@ -671,6 +680,90 @@ pub fn push(dir: &Path, force: bool) -> Result<String, Error> {
         return git(dir, &args);
     }
     git(dir, &args)
+}
+
+/// 在仓库根目录的 .gitignore 末尾加规则（已经有了的不重复加）
+pub fn ignore(dir: &Path, patterns: &[String]) -> Result<(), Error> {
+    let patterns: Vec<&str> = patterns.iter().map(|p| p.trim()).collect();
+    if patterns.is_empty() || patterns.iter().any(|p| p.is_empty() || p.contains('\n')) {
+        return Err(tr!("忽略规则不能为空", "The ignore rule can't be empty").into());
+    }
+    let path = dir.join(".gitignore");
+    let mut text = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e.into()),
+    };
+    let existing: Vec<String> = String::from_utf8_lossy(&text).lines().map(|l| l.trim().to_string()).collect();
+    let new: Vec<&str> = patterns.into_iter().filter(|p| !existing.iter().any(|e| e == p)).collect();
+    if new.is_empty() {
+        return Ok(());
+    }
+    if !text.is_empty() && !text.ends_with(b"\n") {
+        text.push(b'\n');
+    }
+    for p in new {
+        text.extend_from_slice(p.as_bytes());
+        text.push(b'\n');
+    }
+    std::fs::write(&path, text)?;
+    Ok(())
+}
+
+/// 把路径转成 .gitignore 里只匹配它本身的规则：以 / 开头，转义通配符
+pub fn ignore_pattern_for(path: &str) -> String {
+    let mut out = String::from("/");
+    for c in path.chars() {
+        if matches!(c, '*' | '?' | '[' | '\\' | '!' | '#') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    // 结尾的空格会被 git 忽略，要转义
+    if out.ends_with(' ') {
+        out.pop();
+        out.push_str("\\ ");
+    }
+    out
+}
+
+#[derive(Debug, Serialize)]
+pub struct Signature {
+    /// G 有效，U 有效但不确定是谁的密钥，B 无效，X/Y 过期，R 密钥已吊销，E 无法验证（缺少公钥），N 没有签名
+    pub status: char,
+    pub signer: String,
+    pub key: String,
+    /// gpg 或 ssh
+    pub format: String,
+}
+
+/// 提交的签名验证结果。没有签名时返回 None（不用启动 gpg）
+pub fn signature(dir: &Path, oid: &str) -> Result<Option<Signature>, Error> {
+    let repo = git2::Repository::open(dir)?;
+    let Ok((sig, _)) = repo.extract_signature(&git2::Oid::from_str(oid)?, None) else {
+        return Ok(None);
+    };
+    let format = if sig.starts_with(b"-----BEGIN SSH SIGNATURE") { "ssh" } else { "gpg" };
+    let out = git(dir, &["log", "-1", "--format=%G?%x00%GS%x00%GK", oid])?;
+    let mut p = out.trim_end().split('\0');
+    Ok(Some(Signature {
+        status: p.next().and_then(|s| s.chars().next()).unwrap_or('E'),
+        signer: p.next().unwrap_or("").to_string(),
+        key: p.next().unwrap_or("").to_string(),
+        format: format.into(),
+    }))
+}
+
+/// 从 PR 的远程引用新建本地分支并切换过去（例如 refs/pull/12/head → pr/12）
+pub fn checkout_pull(dir: &Path, remote: &str, remote_ref: &str, local: &str) -> Result<String, Error> {
+    let spec = format!("+{remote_ref}:refs/heads/{local}");
+    // 已经在这个分支上时 fetch 不能直接改它，先切走不划算：改用 pull 的方式更新
+    let current = git(dir, &["symbolic-ref", "-q", "--short", "HEAD"]).unwrap_or_default();
+    if current.trim() == local {
+        return git(dir, &["pull", "--no-edit", "--progress", remote, remote_ref]);
+    }
+    git(dir, &["fetch", "--progress", remote, &spec])?;
+    git(dir, &["switch", local])
 }
 
 #[derive(Debug, Serialize)]

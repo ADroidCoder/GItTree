@@ -66,7 +66,9 @@ Get the latest installer from the [**Releases page**](https://github.com/ADroidC
 - **Stash** — browse stashed files and diffs (including untracked files), stash only selected files, apply / pop / drop.
 - Branches, tags, merge, rebase, cherry-pick, revert and reset from context menus. Rename branches (optionally on the remote too), push and delete tags on remotes, and force push with `--force-with-lease`.
 - **Remotes** — add, rename, remove and change URLs; copy a repository URL (credentials are stripped) or open its web page in the browser.
-- **Switch branches with uncommitted changes** — GitTree offers to stash them, switch, and restore them on the new branch.
+- **Switch branches or pull with uncommitted changes** — GitTree offers to stash them first and restore them afterwards.
+- **Image diffs** — old and new images side by side or with a swipe slider, with dimensions and file sizes.
+- **Add to .gitignore** — right-click an untracked file to ignore it, its extension or its whole folder.
 - **Clone** with progress, or **create** a new repository.
 - **Open in** your editor (VS Code by default; Cursor, IntelliJ IDEA etc. supported), terminal, or Finder / Explorer.
 
@@ -76,6 +78,14 @@ Get the latest installer from the [**Releases page**](https://github.com/ADroidC
 - **Interactive rebase** without a terminal editor — reorder commits by dragging, squash or drop them, and edit messages inline.
 - **File history** that follows renames, and **Blame** with per-line author, date and commit.
 - **Git Flow** — start and finish feature / bugfix / release / hotfix branches from one panel. Compatible with the `git flow` CLI and SourceTree configuration.
+- **Recover lost commits (Reflog)** — commits lost to a reset, a deleted branch or a rebase are listed from HEAD's history; right-click one to create a branch and get it back.
+- **Pull requests / merge requests** for GitHub, GitLab (including self-hosted), Gitee and Gitea — list open PRs, check them out or compare them, and open the “new PR” page for a branch. Private repositories need an access token once; it is stored only on your computer.
+- **Submodules** — listed in the sidebar with their state (not downloaded, different commit); initialize, update, update to the latest remote commit, sync URLs, or open one in a new tab.
+- **Worktrees** — check out another branch into a separate folder and work on both at once, without switching or stashing.
+- **Bisect** — mark a good and a bad commit, then tell GitTree whether each checked-out commit has the problem; after a few steps it finds the first bad commit.
+- **Git LFS** — diffs for LFS-managed images, pulling LFS files, and tracking file types from the context menu. GitTree warns you when a repository uses LFS but git-lfs isn't installed.
+- **Commit signatures** — commit details show whether the GPG / SSH signature verifies.
+- **Multiple identities** — keep separate work and personal names and emails and switch automatically by folder (using git's own includeIf, so it works on the command line too). The commit box always shows which identity you're about to commit as.
 
 ### App
 - **Command palette** (⌘K / Ctrl+K) — run any command, switch branches, check out remote branches, jump to tags or open repositories by typing a few letters.
@@ -173,6 +183,13 @@ crates/gittree-core/   Core library, UI-independent and testable on its own
   src/conflict.rs      Conflict parsing and resolution
   src/history.rs       File history and blame
   src/rebase.rs        Interactive rebase
+  src/reflog.rs        Reflog
+  src/forge.rs         GitHub / GitLab / Gitee / Gitea detection, PR URLs and APIs
+  src/submodule.rs     Submodules
+  src/worktree.rs      Worktrees
+  src/bisect.rs        Bisect
+  src/lfs.rs           Git LFS
+  src/identity.rs      Commit identities and per-folder switching
 src-tauri/             Tauri desktop app exposing the core library to the UI
 src/                   Svelte 5 user interface
 ```

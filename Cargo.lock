@@ -1460,6 +1460,8 @@ version = "0.3.2"
 dependencies = [
  "gittree-core",
  "notify",
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",

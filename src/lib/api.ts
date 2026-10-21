@@ -135,6 +135,120 @@ export interface Compare {
   behind: number;
 }
 
+export interface ReflogEntry {
+  oid: string;
+  time: number;
+  /** commit、checkout、reset、rebase、merge、pull 等 */
+  action: string;
+  message: string;
+  summary: string;
+  author: string;
+}
+
+export interface Worktree {
+  path: string;
+  head: string;
+  branch: string | null;
+  main: boolean;
+  current: boolean;
+  locked: boolean;
+  prunable: boolean;
+}
+
+export interface Submodule {
+  name: string;
+  path: string;
+  url: string;
+  oid: string;
+  state: "ok" | "uninitialized" | "modified" | "conflict";
+  describe: string;
+}
+
+export interface LfsInfo {
+  installed: boolean;
+  used: boolean;
+  patterns: string[];
+}
+
+export interface Identity {
+  name: string | null;
+  email: string | null;
+  /** local、global、system、command */
+  scope: string | null;
+  origin: string | null;
+}
+
+export interface IdentityProfile {
+  id: string;
+  label: string;
+  name: string;
+  email: string;
+  signing_key: string | null;
+  dirs: string[];
+  file: string;
+}
+
+export interface RepoExtras {
+  worktrees: Worktree[];
+  submodules: Submodule[];
+  lfs: LfsInfo;
+  identity: Identity;
+}
+
+export interface BisectState {
+  active: boolean;
+  bad: string | null;
+  good: string[];
+  skipped: string[];
+  current: string | null;
+  remaining: number | null;
+  found: string | null;
+}
+
+export interface Signature {
+  /** G 有效，U 有效但密钥未受信任，B 无效，X/Y 过期，R 已吊销，E 无法验证，N 没有签名 */
+  status: string;
+  signer: string;
+  key: string;
+  format: "gpg" | "ssh";
+}
+
+export interface ImageSide {
+  data: string | null;
+  size: number;
+  lfs: boolean;
+}
+
+export interface ImagePair {
+  old: ImageSide | null;
+  new: ImageSide | null;
+}
+
+export type ForgeKind = "github" | "gitlab" | "gitee" | "gitea";
+
+export interface ForgeInfo {
+  project: { host: string; path: string; web: string };
+  kind: ForgeKind | null;
+  has_token: boolean;
+  pulls_web: string | null;
+  token_page: string | null;
+}
+
+export interface PullRequest {
+  number: number;
+  title: string;
+  author: string;
+  source: string;
+  target: string;
+  /** 来自 fork 仓库 */
+  fork: boolean;
+  /** fork 仓库的 owner/repo，GitLab 没有 */
+  source_repo: string | null;
+  draft: boolean;
+  updated: string;
+  url: string;
+}
+
 export interface StatusEntry {
   path: string;
   old_path: string | null;
@@ -222,7 +336,25 @@ export type Op =
   | { op: "resolve_side"; path: string; theirs: boolean }
   | { op: "merge_into"; branch: string; source: string }
   | { op: "rebase_branch"; branch: string; onto: string }
-  | { op: "rebase_interactive"; from: string; steps: RebaseStep[] };
+  | { op: "rebase_interactive"; from: string; steps: RebaseStep[] }
+  | { op: "ignore"; patterns: string[] }
+  | { op: "submodule_update"; path: string | null }
+  | { op: "submodule_update_remote"; path: string }
+  | { op: "submodule_sync"; path: string | null }
+  | { op: "submodule_add"; url: string; path: string }
+  | { op: "add_worktree"; path: string; branch: string; new_branch: boolean; start: string | null }
+  | { op: "remove_worktree"; path: string; force: boolean }
+  | { op: "prune_worktrees" }
+  | { op: "bisect_start"; bad: string; good: string }
+  | { op: "bisect_mark"; verdict: "good" | "bad" | "skip"; oid: string | null }
+  | { op: "bisect_reset" }
+  | { op: "lfs_pull" }
+  | { op: "lfs_fetch" }
+  | { op: "lfs_track"; pattern: string }
+  | { op: "lfs_untrack"; pattern: string }
+  | { op: "set_local_identity"; name: string; email: string }
+  | { op: "clear_local_identity" }
+  | { op: "checkout_pull"; remote: string; remote_ref: string; local: string; number: number };
 
 export interface PlanCommit {
   oid: string;
@@ -317,6 +449,34 @@ export const api = {
   compareFileDiff: (repo: string, from: string, to: string, path: string, oldPath: string | null) =>
     invoke<FileDiff | null>("compare_file_diff", { repo, from, to, path, oldPath }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
+  revealPath: (path: string) => invoke<void>("reveal_path", { path }),
+  reflog: (repo: string, target: string | null) => invoke<(ReflogEntry & { row: number | null })[]>("reflog", { repo, target }),
+  repoExtras: (repo: string) => invoke<RepoExtras>("repo_extras", { repo }),
+  bisectState: (repo: string) => invoke<BisectState>("bisect_state", { repo }),
+  commitSignature: (repo: string, oid: string) => invoke<Signature | null>("commit_signature", { repo, oid }),
+  imagePair: (
+    repo: string,
+    t: { source: string; oid?: string; from?: string; to?: string; staged?: boolean; path: string; oldPath: string | null },
+  ) =>
+    invoke<ImagePair>("image_pair", {
+      repo,
+      source: t.source,
+      oid: t.oid ?? null,
+      from: t.from ?? null,
+      to: t.to ?? null,
+      staged: !!t.staged,
+      path: t.path,
+      oldPath: t.oldPath,
+    }),
+  identityProfiles: () => invoke<IdentityProfile[]>("identity_profiles"),
+  identitySaveProfile: (id: string | null, label: string, name: string, email: string, signingKey: string | null) =>
+    invoke<string>("identity_save_profile", { id, label, name, email, signingKey }),
+  identityDeleteProfile: (id: string) => invoke<void>("identity_delete_profile", { id }),
+  identitySetDirs: (id: string, dirs: string[]) => invoke<void>("identity_set_dirs", { id, dirs }),
+  forgeInfo: (url: string) => invoke<ForgeInfo>("forge_info", { url }),
+  forgeNewPullUrl: (url: string, source: string, target: string) => invoke<string>("forge_new_pull_url", { url, source, target }),
+  forgeConfigure: (host: string, kind: ForgeKind | null, token: string | null) => invoke<void>("forge_configure", { host, kind, token }),
+  pullRequests: (url: string) => invoke<{ kind: ForgeKind; pulls: PullRequest[] }>("pull_requests", { url }),
   openIn: (repo: string, target: OpenTarget, path: string | null, editor: string | null) =>
     invoke<void>("open_in", { repo, target, path, editor }),
   askpassReply: (id: number, answer: string | null) => invoke<void>("askpass_reply", { id, answer }),

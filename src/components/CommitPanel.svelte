@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from "../lib/i18n";
-  import { api, type CommitDetails } from "../lib/api";
+  import { api, type CommitDetails, type Signature } from "../lib/api";
   import { errorText, openIn, toast, type RepoTab } from "../lib/store.svelte";
   import { avatarColor, formatDate, initials } from "../lib/util";
   import FileList from "./FileList.svelte";
@@ -45,6 +45,61 @@
       cancelled = true;
       clearTimeout(timer);
     };
+  });
+
+  // 签名验证要启动 gpg / ssh-keygen，单独异步读，不拖慢详情
+  const sigCache = new Map<string, Signature | null>();
+  let sig = $state<Signature | null>(null);
+  $effect(() => {
+    const id = oid;
+    if (sigCache.has(id)) {
+      sig = sigCache.get(id)!;
+      return;
+    }
+    sig = null;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .commitSignature(tab.id, id)
+        .then((s) => {
+          if (sigCache.size > 200) sigCache.clear();
+          sigCache.set(id, s);
+          if (!cancelled) sig = s;
+        })
+        .catch(() => {});
+    }, 120);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  });
+
+  /** 签名状态的说明和颜色 */
+  const sigInfo = $derived.by(() => {
+    if (!sig) return null;
+    const kind = sig.format === "ssh" ? "SSH" : "GPG";
+    const who = sig.signer ? ` · ${sig.signer}` : "";
+    switch (sig.status) {
+      case "G":
+        return { cls: "ok", text: t("✓ {0} 签名有效{1}", kind, who) };
+      case "U":
+        return { cls: "ok", text: t("✓ {0} 签名有效，但密钥没有被设为受信任{1}", kind, who) };
+      case "X":
+      case "Y":
+        return { cls: "warn", text: t("⚠ {0} 签名或密钥已过期{1}", kind, who) };
+      case "R":
+        return { cls: "bad", text: t("✗ {0} 签名的密钥已被吊销{1}", kind, who) };
+      case "B":
+        return { cls: "bad", text: t("✗ {0} 签名无效：提交内容和签名对不上", kind) };
+      default:
+        return {
+          cls: "warn",
+          text:
+            sig.format === "ssh"
+              ? t("? 有 SSH 签名，但无法验证（需要设置 gpg.ssh.allowedSignersFile）")
+              : t("? 有 GPG 签名，但无法验证（本机没有签名者的公钥{0}）", sig.key ? ` ${sig.key}` : ""),
+        };
+    }
   });
 
   const subject = $derived(details?.message.split("\n")[0] ?? "");
@@ -103,6 +158,9 @@
         {/if}
       </div>
     </div>
+    {#if sigInfo}
+      <div class="sig {sigInfo.cls}" title={sig?.key ? t("密钥 {0}", sig.key) : ""}>{sigInfo.text}</div>
+    {/if}
     <div class="files-head">
       <span>{t("{0} 个文件改动", details.files.length)}</span>
       <span class="add">+{totals.a}</span>
@@ -261,6 +319,22 @@
     color: var(--text-dim);
   }
   .error {
+    color: var(--del);
+  }
+  .sig {
+    margin: 0 14px 8px;
+    padding: 4px 8px;
+    border-radius: 5px;
+    background: var(--bg-hover);
+    font-size: 12px;
+  }
+  .sig.ok {
+    color: var(--add);
+  }
+  .sig.warn {
+    color: var(--warn);
+  }
+  .sig.bad {
     color: var(--del);
   }
 </style>
