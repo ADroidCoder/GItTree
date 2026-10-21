@@ -468,6 +468,8 @@ enum Op {
     /// 拖拽：把 branch 变基到 onto
     RebaseBranch { branch: String, onto: String },
     RebaseInteractive { from: String, steps: Vec<rebase::Step> },
+    /// 本地改动会被覆盖时：先 stash，执行 inner（切换分支），pop 为 true 时再恢复改动
+    WithStash { inner: Box<Op>, pop: bool },
 }
 
 impl Op {
@@ -781,6 +783,10 @@ fn run_op(dir: &Path, git_dir: &Path, op: Op) -> Result<String, Error> {
             Op::MergeInto { branch, source } => ops::merge_into(d, &branch, &source),
             Op::RebaseBranch { branch, onto } => ops::rebase_branch(d, &branch, &onto),
             Op::RebaseInteractive { from, steps } => rebase::run(d, git_dir, &from, &steps),
+            Op::WithStash { inner, pop } => {
+                let what = inner.undo_label().map(|(label, _)| label).unwrap_or_default();
+                ops::with_stash(d, &what, pop, || run_op(d, git_dir, *inner))
+            }
         }
     }
 }

@@ -415,6 +415,43 @@ pub fn checkout_detached(dir: &Path, oid: &str) -> Result<(), Error> {
     Ok(())
 }
 
+/// 先把本地改动（包括未跟踪的文件）stash 起来再执行 f，用于本地改动会被切换分支覆盖的情况。
+/// pop 为 true 时完成后把改动恢复回来；f 失败时也会恢复，相当于什么都没做。
+pub fn with_stash(dir: &Path, what: &str, pop: bool, f: impl FnOnce() -> Result<String, Error>) -> Result<String, Error> {
+    let stash_oid = || git(dir, &["rev-parse", "-q", "--verify", "refs/stash"]).ok();
+    let before = stash_oid();
+    let message = tr!("GitTree：{what} 前自动保存", "GitTree: saved before {what}");
+    git(dir, &["stash", "push", "--include-untracked", "-m", &message])?;
+    // 没有改动时 git 不会新建 stash
+    let stashed = stash_oid().is_some_and(|o| Some(&o) != before.as_ref());
+    let out = match f() {
+        Ok(out) => out,
+        Err(e) => {
+            if stashed {
+                let _ = git(dir, &["stash", "pop"]);
+            }
+            return Err(e);
+        }
+    };
+    if !stashed {
+        return Ok(out);
+    }
+    if !pop {
+        return Ok(tr!(
+            "原来的改动保存在 stash 里（{message}），需要时在左侧栏的 Stash 里恢复",
+            "Your changes are saved in the stash ({message}). Restore them from Stash in the sidebar when needed"
+        ));
+    }
+    // 恢复时冲突：git 会保留这条 stash，冲突留在工作区里给用户解决
+    git(dir, &["stash", "pop"]).map_err(|e| {
+        tr!(
+            "已经切换过去了，但恢复改动时有冲突。请解决冲突；原来的改动还保存在 stash 里，确认没问题后可以把它删掉。\n\n{e}",
+            "Switched, but restoring your changes caused conflicts. Resolve them; your original changes are still in the stash and can be dropped once you're done.\n\n{e}"
+        )
+    })?;
+    Ok(out)
+}
+
 pub fn create_branch(dir: &Path, name: &str, start: &str, checkout: bool) -> Result<(), Error> {
     if checkout {
         git(dir, &["switch", "-c", name, start])?;

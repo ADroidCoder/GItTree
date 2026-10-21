@@ -412,6 +412,13 @@ const en: Record<string, string> = {
     "{0} has commits that aren't merged into the current branch (or its upstream). Deleting it makes them hard to find.\nForce delete anyway? You can bring it back with Undo ({1}Z).",
   强制删除: "Force delete",
 
+  "…还有 {0} 个文件": "…and {0} more file||…and {0} more files",
+  本地改动会被覆盖: "Local changes would be overwritten",
+  "切换会覆盖下面这些文件里还没提交的改动，可以先把改动 stash 起来再切换。\n\n{0}":
+    "Switching would overwrite uncommitted changes in these files. You can stash them first and then switch.\n\n{0}",
+  "切换后恢复这些改动（stash pop）": "Restore the changes after switching (stash pop)",
+  "Stash 并切换": "Stash and switch",
+
   // ---------- 侧边栏 ----------
   "领先上游 {0} 个提交": "{0} commit ahead of upstream||{0} commits ahead of upstream",
   "落后上游 {0} 个提交": "{0} commit behind upstream||{0} commits behind upstream",

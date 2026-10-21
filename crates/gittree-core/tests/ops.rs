@@ -219,3 +219,52 @@ fn push_rejected_then_force_with_lease() {
     let remote_head = ops::git(&remote, &["rev-parse", "refs/heads/dev"]).unwrap();
     assert_eq!(head, remote_head);
 }
+
+#[test]
+fn checkout_with_stash_carries_or_keeps_changes() {
+    let dir = temp_repo("with-stash");
+    std::fs::write(dir.join("f.txt"), "1\n2\n3\n4\n5\n6\n7\n8\n").unwrap();
+    ops::stage_all(&dir).unwrap();
+    ops::commit(&dir, "初始", false).unwrap();
+    ops::git(&dir, &["switch", "-c", "other"]).unwrap();
+    std::fs::write(dir.join("f.txt"), "1 other\n2\n3\n4\n5\n6\n7\n8\n").unwrap();
+    ops::stage_all(&dir).unwrap();
+    ops::commit(&dir, "other 改了第一行", false).unwrap();
+    ops::git(&dir, &["switch", "main"]).unwrap();
+    let stash_count = || ops::git(&dir, &["stash", "list"]).unwrap().lines().count();
+
+    // 改了最后一行：直接切换会被拒绝
+    std::fs::write(dir.join("f.txt"), "1\n2\n3\n4\n5\n6\n7\n8 mine\n").unwrap();
+    std::fs::write(dir.join("new.txt"), "untracked\n").unwrap();
+    let err = ops::checkout(&dir, "other").unwrap_err().to_string();
+    assert!(err.contains("would be overwritten"), "{err}");
+
+    // stash → 切换 → pop：改动带到了 other 上，两边的修改合在一起，stash 没有留下
+    ops::with_stash(&dir, "切换到 other", true, || ops::checkout(&dir, "other").map(|_| String::new())).unwrap();
+    assert_eq!(ops::git(&dir, &["branch", "--show-current"]).unwrap().trim(), "other");
+    assert_eq!(std::fs::read_to_string(dir.join("f.txt")).unwrap(), "1 other\n2\n3\n4\n5\n6\n7\n8 mine\n");
+    assert!(dir.join("new.txt").exists());
+    assert_eq!(stash_count(), 0);
+
+    // 不恢复：切换后工作区是干净的，改动留在 stash 里
+    ops::with_stash(&dir, "切换到 main", false, || ops::checkout(&dir, "main").map(|_| String::new())).unwrap();
+    assert_eq!(ops::git(&dir, &["status", "--porcelain"]).unwrap().trim(), "");
+    assert_eq!(stash_count(), 1);
+    ops::git(&dir, &["stash", "drop"]).unwrap();
+
+    // 切换本身失败：改动原样恢复，stash 不留下
+    std::fs::write(dir.join("f.txt"), "changed\n").unwrap();
+    assert!(ops::with_stash(&dir, "切换到 nope", true, || ops::checkout(&dir, "nope").map(|_| String::new())).is_err());
+    assert_eq!(std::fs::read_to_string(dir.join("f.txt")).unwrap(), "changed\n");
+    assert_eq!(stash_count(), 0);
+
+    // 恢复时冲突：报错，冲突留在工作区，原来的改动还在 stash 里
+    std::fs::write(dir.join("f.txt"), "1 mine\n2\n3\n4\n5\n6\n7\n8\n").unwrap();
+    let err = ops::with_stash(&dir, "切换到 other", true, || ops::checkout(&dir, "other").map(|_| String::new()))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("冲突"), "{err}");
+    assert_eq!(ops::git(&dir, &["branch", "--show-current"]).unwrap().trim(), "other");
+    assert_eq!(stash_count(), 1);
+    assert!(std::fs::read_to_string(dir.join("f.txt")).unwrap().contains("<<<<<<<"));
+}

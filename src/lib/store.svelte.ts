@@ -55,6 +55,10 @@ let tabSeq = 0;
 /** 联网的操作，可能很慢，允许取消 */
 const NETWORK_OPS = new Set<string>(["fetch", "pull", "push", "flow_publish"]);
 
+/** 会切换分支的操作：本地改动会被覆盖时可以先 stash */
+const SWITCH_OPS = new Set<string>(["checkout", "checkout_remote", "checkout_detached", "create_branch"]);
+const OVERWRITE = /would be overwritten by checkout|untracked working tree files would be overwritten|commit your changes or stash them before you switch/i;
+
 /** 通知里用的操作名 */
 function opName(op: Op["op"]) {
   const names: Partial<Record<Op["op"], string>> = {
@@ -315,9 +319,14 @@ export class RepoTab {
       this.addLog({ text: `✗ ${errorText(e)}`, transient: false, kind: "err" });
       // 分支还有没合并的提交，git 拒绝普通删除：不显示原始报错，改为询问要不要强制删除
       const unmerged = op.op === "delete_branch" && !op.force && /not fully merged/i.test(errorText(e));
+      // 切换分支会覆盖本地改动：不显示原始报错，改为询问要不要先 stash
+      const blocked = SWITCH_OPS.has(op.op) && OVERWRITE.test(errorText(e));
       if (unmerged) {
         const tab = this;
         setTimeout(() => offerForceDelete(tab, op.name));
+      } else if (blocked) {
+        const tab = this;
+        setTimeout(() => offerStashSwitch(tab, op, label, errorText(e)));
       } else {
         toast(errorText(e), "error");
       }
@@ -631,6 +640,22 @@ export async function forcePush(tab: RepoTab) {
     true,
   );
   if (ok) await tab.run({ op: "push", force: true }, t("正在强制推送…"));
+}
+
+async function offerStashSwitch(tab: RepoTab, op: Op, label: string | undefined, error: string) {
+  // git 的报错里，会被覆盖的文件每行一个，以制表符开头
+  const files = error
+    .split("\n")
+    .filter((l) => /^\t/.test(l))
+    .map((l) => l.trim());
+  const list = files.slice(0, 8).join("\n") + (files.length > 8 ? `\n${t("…还有 {0} 个文件", files.length - 8)}` : "");
+  const d = await dialog({
+    title: t("本地改动会被覆盖"),
+    message: t("切换会覆盖下面这些文件里还没提交的改动，可以先把改动 stash 起来再切换。\n\n{0}", list || "—"),
+    checkbox: { label: t("切换后恢复这些改动（stash pop）"), value: true },
+    confirmText: t("Stash 并切换"),
+  });
+  if (d) await tab.run({ op: "with_stash", inner: op, pop: d.checkbox }, label ?? t("正在切换分支…"));
 }
 
 async function offerForceDelete(tab: RepoTab, name: string) {
