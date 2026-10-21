@@ -255,3 +255,36 @@ fn pull_with_stash_keeps_local_changes() {
     assert_eq!(std::fs::read_to_string(local.join("a.txt")).unwrap(), "1 remote\n2\n3\n4\n5\n6 local\n");
     assert!(ops::stash_list(&local).unwrap().is_empty());
 }
+
+#[test]
+fn push_branch_created_from_another_remote_branch() {
+    let remote = temp_repo("push-new-remote");
+    ops::git(&remote, &["config", "receive.denyCurrentBranch", "ignore"]).unwrap();
+    commit_file(&remote, "a.txt", "1\n", "初始");
+    ops::git(&remote, &["branch", "develop"]).unwrap();
+
+    let local = temp_repo("push-new-local");
+    ops::git(&local, &["remote", "add", "origin", &format!("file://{}", remote.display())]).unwrap();
+    ops::git(&local, &["fetch", "-q", "origin"]).unwrap();
+
+    // 界面上新建的分支不跟踪起点
+    ops::create_branch(&local, "feature/a", "origin/develop", true).unwrap();
+    assert!(ops::git(&local, &["rev-parse", "--abbrev-ref", "@{u}"]).is_err());
+    commit_file(&local, "b.txt", "b\n", "功能 a");
+    ops::push(&local, false).unwrap();
+    assert_eq!(ops::git(&local, &["rev-parse", "--abbrev-ref", "@{u}"]).unwrap().trim(), "origin/feature/a");
+
+    // 命令行里建的、跟踪着 origin/develop 的分支：推到同名的远程分支，develop 不受影响
+    let develop = ops::git(&remote, &["rev-parse", "develop"]).unwrap();
+    ops::git(&local, &["switch", "-q", "-c", "feature/b", "--track", "origin/develop"]).unwrap();
+    commit_file(&local, "c.txt", "c\n", "功能 b");
+    ops::push(&local, false).unwrap();
+    assert_eq!(ops::git(&remote, &["rev-parse", "develop"]).unwrap(), develop);
+    assert_eq!(ops::git(&remote, &["rev-parse", "feature/b"]).unwrap(), ops::git(&local, &["rev-parse", "HEAD"]).unwrap());
+    assert_eq!(ops::git(&local, &["rev-parse", "--abbrev-ref", "@{u}"]).unwrap().trim(), "origin/feature/b");
+
+    // 已经正常跟踪同名分支时照常推送
+    commit_file(&local, "d.txt", "d\n", "再改");
+    ops::push(&local, false).unwrap();
+    assert_eq!(ops::git(&remote, &["rev-parse", "feature/b"]).unwrap(), ops::git(&local, &["rev-parse", "HEAD"]).unwrap());
+}

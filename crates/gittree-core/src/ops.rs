@@ -108,10 +108,35 @@ fn git_raw(dir: &Path, args: &[&str], input: Option<&[u8]>, envs: &[(&str, &str)
         Err(tr!("已取消", "Cancelled").into())
     } else {
         let stdout = String::from_utf8_lossy(&stdout);
-        let stderr = String::from_utf8_lossy(&stderr);
+        let stderr = without_progress(&String::from_utf8_lossy(&stderr));
         let msg = if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() };
         Err(tr!("git {} 失败：\n{}", "git {} failed:\n{}", args.first().unwrap_or(&""), msg).into())
     }
+}
+
+/// 去掉 git 输出里的进度行（Counting objects 45% 之类），只留下真正的错误信息。
+/// 进度在执行时已经实时显示在日志里了
+fn without_progress(text: &str) -> String {
+    const STAGES: [&str; 10] = [
+        "Enumerating objects",
+        "Counting objects",
+        "Compressing objects",
+        "Writing objects",
+        "Receiving objects",
+        "Resolving deltas",
+        "Delta compression",
+        "Total ",
+        "Unpacking objects",
+        "Updating files",
+    ];
+    text.split(['\r', '\n'])
+        .map(str::trim_end)
+        .filter(|l| {
+            let l = l.strip_prefix("remote: ").unwrap_or(l).trim_start();
+            !l.is_empty() && !STAGES.iter().any(|s| l.starts_with(s))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 // ---------- 进度 ----------
@@ -461,11 +486,13 @@ pub fn with_stash(dir: &Path, what: &str, pop: bool, f: impl FnOnce() -> Result<
     Ok(out)
 }
 
+/// 新建分支。不跟踪起点：从 origin/develop 新建 feature/x 时，如果跟踪了 origin/develop，
+/// 推送时名字对不上会被 git 拒绝（或者推到 develop 上去）。第一次推送时再设置上游
 pub fn create_branch(dir: &Path, name: &str, start: &str, checkout: bool) -> Result<(), Error> {
     if checkout {
-        git(dir, &["switch", "-c", name, start])?;
+        git(dir, &["switch", "--no-track", "-c", name, start])?;
     } else {
-        git(dir, &["branch", name, start])?;
+        git(dir, &["branch", "--no-track", name, start])?;
     }
     Ok(())
 }
@@ -663,22 +690,38 @@ pub fn pull(dir: &Path) -> Result<String, Error> {
     git(dir, &["pull", "--no-edit", "--progress"])
 }
 
-/// 推送当前分支；没有上游分支时推送到 origin 并设置跟踪
+/// 推送当前分支。没有上游分支，或者上游是别的名字（例如从 origin/develop 新建的 feature/x
+/// 还跟踪着 develop）时，推送到远程的同名分支并设为上游
 pub fn push(dir: &Path, force: bool) -> Result<String, Error> {
-    let has_upstream = git(dir, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).is_ok();
+    let branch = git(dir, &["symbolic-ref", "-q", "--short", "HEAD"]).map(|b| b.trim().to_string()).ok();
     let mut args = vec!["push", "--progress"];
     if force {
         args.push("--force-with-lease");
     }
-    if !has_upstream {
-        let remotes = git(dir, &["remote"])?;
-        let remote = remotes.lines().find(|r| *r == "origin").or_else(|| remotes.lines().next());
-        let Some(remote) = remote else {
-            return Err(tr!("这个仓库还没有配置远程仓库", "This repository has no remotes").into());
-        };
-        args.extend(["-u", remote, "HEAD"]);
+    let upstream_ok = match &branch {
+        Some(b) => tracking(dir, b).is_some_and(|(_, remote_branch)| &remote_branch == b),
+        // 分离头指针时交给 git 报错
+        None => true,
+    };
+    if upstream_ok && git(dir, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).is_ok() {
         return git(dir, &args);
     }
+    // 优先用分支原来跟踪的远程，其次 origin，再其次第一个
+    let tracked = branch.as_deref().and_then(|b| tracking(dir, b)).map(|(r, _)| r);
+    let remotes = git(dir, &["remote"])?;
+    let remote = tracked
+        .as_deref()
+        .filter(|t| remotes.lines().any(|r| r == *t))
+        .or_else(|| remotes.lines().find(|r| *r == "origin"))
+        .or_else(|| remotes.lines().next());
+    let Some(remote) = remote else {
+        return Err(tr!("这个仓库还没有配置远程仓库", "This repository has no remotes").into());
+    };
+    let spec = match &branch {
+        Some(b) => format!("HEAD:refs/heads/{b}"),
+        None => "HEAD".to_string(),
+    };
+    args.extend(["-u", remote, &spec]);
     git(dir, &args)
 }
 
@@ -816,6 +859,15 @@ pub fn stash_action(dir: &Path, action: &str, index: u32) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn error_text_drops_progress_lines() {
+        let err = "Enumerating objects: 95, done.\nCounting objects:   1% (1/95)\rCounting objects: 100% (95/95), done.\nremote: Resolving deltas: 100% (3/3)\nremote: error: GH006: Protected branch update failed\nTo github.com:a/b.git\n ! [remote rejected] main -> main (protected branch hook declined)\nerror: failed to push some refs\n";
+        assert_eq!(
+            without_progress(err),
+            "remote: error: GH006: Protected branch update failed\nTo github.com:a/b.git\n ! [remote rejected] main -> main (protected branch hook declined)\nerror: failed to push some refs"
+        );
+    }
 
     #[test]
     fn parses_porcelain_v2() {
