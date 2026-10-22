@@ -65,9 +65,9 @@
       </div>
       <div class="diff">
         <div class="hunk">@@ -12,3 +12,4 @@</div>
-        <div class="ln">  export function save() {"{"}</div>
-        <div class="ln del">-   write(data)</div>
-        <div class="ln add">+   write(data, format)</div>
+        <div class="ln">  function save() {"{"}</div>
+        <div class="ln del">-   write(a)</div>
+        <div class="ln add">+   write(a, fmt)</div>
         <div class="ln add">+   notify()</div>
       </div>
       <div class="btns">
@@ -199,7 +199,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    width: 150px;
+    width: 170px;
     flex-shrink: 0;
     padding: 6px;
     background: var(--bg-side);
@@ -233,7 +233,9 @@
     color: var(--text-faint);
   }
   .ln {
+    overflow: hidden;
     padding: 0 4px;
+    text-overflow: ellipsis;
   }
   .ln.add {
     background: var(--bg-add);

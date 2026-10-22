@@ -41,8 +41,31 @@
   let vh = $state(0);
   let scrollTop = $state(0);
   let refWidth = $state(180);
-  let graphWidth = $state(160);
-  let userResizedGraph = false;
+  /** 提交列表的宽度 */
+  let vw = $state(0);
+  /** 画下所有泳道需要的宽度 */
+  let lanesWidth = $state(160);
+  /** 用户拖动过分支图列宽后就固定用它 */
+  let userGraph = $state<number | null>(null);
+
+  // 提交说明是最重要的一列，窄的时候依次让出空间：先隐藏提交号，再收窄分支图，再隐藏作者
+  const MSG_MIN = 240;
+  const AUTHOR_W = 130;
+  const DATE_W = 90;
+  const SHA_W = 78;
+  const cols = $derived.by(() => {
+    let graph = userGraph ?? Math.max(70, Math.min(lanesWidth, 360));
+    let sha = true;
+    let author = true;
+    const free = () => vw - refWidth - graph - DATE_W - (author ? AUTHOR_W : 0) - (sha ? SHA_W : 0);
+    if (!vw) return { graph, sha, author };
+    if (free() < MSG_MIN) sha = false;
+    if (free() < MSG_MIN && userGraph === null) graph = Math.max(Math.min(graph, 120), graph - (MSG_MIN - free()));
+    if (free() < MSG_MIN) author = false;
+    if (free() < MSG_MIN && userGraph === null) graph = Math.max(70, graph - (MSG_MIN - free()));
+    return { graph, sha, author };
+  });
+  const graphWidth = $derived(cols.graph);
 
   // 行数据缓存放在普通对象里（不做响应式，避免每次写入都触发更新），用 tick 通知界面重绘
   interface Block {
@@ -81,9 +104,7 @@
     const lanes = tab.repo?.max_lanes ?? 0;
     untrack(() => {
       gen = v;
-      if (!userResizedGraph && lanes) {
-        graphWidth = Math.max(70, Math.min(lanes * LANE_W + GRAPH_PAD * 2, 360));
-      }
+      if (lanes) lanesWidth = lanes * LANE_W + GRAPH_PAD * 2;
       setScroll(scrollTop);
       tick++;
     });
@@ -302,6 +323,7 @@
     mq.addEventListener("change", onScheme);
     const ro = new ResizeObserver(() => {
       vh = viewport.clientHeight;
+      vw = viewport.clientWidth;
       setScroll(scrollTop);
     });
     ro.observe(viewport);
@@ -405,10 +427,7 @@
       const move = (ev: PointerEvent) => {
         const w = startW + ev.clientX - startX;
         if (which === "ref") refWidth = Math.max(60, Math.min(500, w));
-        else {
-          userResizedGraph = true;
-          graphWidth = Math.max(40, Math.min(1500, w));
-        }
+        else userGraph = Math.max(40, Math.min(1500, w));
       };
       const up = () => {
         window.removeEventListener("pointermove", move);
@@ -475,9 +494,9 @@
         </span>
       {/if}
     </div>
-    <div class="h-author">{t("作者")}</div>
+    {#if cols.author}<div class="h-author">{t("作者")}</div>{/if}
     <div class="h-date">{t("时间")}</div>
-    <div class="h-sha">{t("提交")}</div>
+    {#if cols.sha}<div class="h-sha">{t("提交")}</div>{/if}
   </div>
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="viewport" bind:this={viewport} tabindex="0" onkeydown={onKey} role="grid">
@@ -541,9 +560,9 @@
               <div class="c-msg">
                 <span class="summary" class:merge={row.parents > 1}>{row.summary}</span>
               </div>
-              <div class="c-author" title={`${row.author} <${row.email}>`}>{row.author}</div>
+              {#if cols.author}<div class="c-author" title={`${row.author} <${row.email}>`}>{row.author}</div>{/if}
               <div class="c-date" title={formatDate(row.time)}>{relativeTime(row.time)}</div>
-              <div class="c-sha">{row.oid.slice(0, 7)}</div>
+              {#if cols.sha}<div class="c-sha">{row.oid.slice(0, 7)}</div>{/if}
             {:else}
               <div class="c-msg"><span class="skeleton"></span></div>
             {/if}
@@ -710,7 +729,7 @@
   }
   .h-sha,
   .c-sha {
-    width: 70px;
+    width: 78px;
     flex-shrink: 0;
   }
   .viewport {
