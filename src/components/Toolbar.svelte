@@ -512,11 +512,24 @@
   .right > :first-child {
     margin-left: auto;
   }
-  .right > .tb {
-    flex-shrink: 0;
+  /* 右边按内容占宽、不被压缩：放不下时整个工具栏溢出，由 fit() 量出来再收起；多余的宽度留给左边的仓库名和分支名 */
+  .right {
+    min-width: max-content;
+  }
+  /* 左边以内容宽度为起点，窄的时候先把右边多出来的空让给它 */
+  .left {
+    flex: 1 1 auto;
+  }
+  /* 仓库名和分支名各留一个最小宽度：压到这里还放不下，左边就算溢出，fit() 会先把按钮收成图标、搜索框收成按钮 */
+  .left > .picker-group {
+    min-width: 110px;
+  }
+  .left > .picker-group:first-child {
+    min-width: 80px;
   }
   .center {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     gap: 2px;
   }
@@ -529,6 +542,7 @@
     flex-shrink: 2;
   }
   .plabel {
+    white-space: nowrap;
     padding-left: 8px;
     color: var(--text-faint);
     font-size: 10.5px;
@@ -611,6 +625,7 @@
     background: none;
     font-size: 11.5px;
     color: var(--text-dim);
+    white-space: nowrap;
   }
   /* 推送旁边的下拉箭头，紧贴推送按钮 */
   .tb.more {
@@ -690,8 +705,7 @@
     align-items: center;
     gap: 4px;
     position: relative;
-    flex: 0 1 260px;
-    min-width: 150px;
+    flex: 0 0 240px;
   }
   .search.wide {
     flex-basis: 330px;

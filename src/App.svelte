@@ -162,6 +162,8 @@
   .app {
     display: grid;
     grid-template-rows: auto auto 1fr;
+    /* 列宽不能被内容撑开，否则窗口变窄时工具栏会整个超出窗口被裁掉，而不是收起 */
+    grid-template-columns: minmax(0, 1fr);
     height: 100vh;
   }
   .body {
