@@ -16,15 +16,16 @@
   let picker = $state<{ x: number; y: number } | null>(null);
 
   /**
-   * 窗口窄到放不下时逐级收起：1 级按钮只显示图标，2 级搜索框也收成一个按钮（点开浮在下面）。
+   * 窗口窄到放不下时逐级收起（分支名会先自己省略一部分）：
+   * 1 级右边的「打开、日志」只留图标、搜索框变窄；2 级中间的按钮也只留图标；3 级搜索框收成一个按钮（点开浮在下面）。
    * 每次尺寸变化都先试着展开一级、放不下再收回去；改完等 DOM 更新后立刻量，都在绘制前完成，不会闪。
    */
   let bar = $state<HTMLDivElement>();
   let leftEl = $state<HTMLDivElement>();
   let rightEl = $state<HTMLDivElement>();
   let level = $state(0);
-  const compact = $derived(level >= 1);
-  const tight = $derived(level >= 2);
+  const MAX_LEVEL = 3;
+  const tight = $derived(level >= MAX_LEVEL);
   /** 收成按钮后点开的搜索框 */
   let searchOpen = $state(false);
   let fitting = false;
@@ -51,7 +52,7 @@
           break;
         }
       }
-      while (level < 2 && overflows()) {
+      while (level < MAX_LEVEL && overflows()) {
         level++;
         await tick();
       }
@@ -333,7 +334,7 @@
   }
 </script>
 
-<div class="toolbar" class:compact bind:this={bar}>
+<div class="toolbar" class:lv1={level >= 1} class:lv2={level >= 2} bind:this={bar}>
   <div class="left" bind:this={leftEl}>
     <div class="picker-group">
       <span class="plabel">{t("仓库")}</span>
@@ -603,7 +604,7 @@
     white-space: nowrap;
     flex-shrink: 0;
   }
-  .compact .focus-btn {
+  .lv1 .focus-btn {
     flex-shrink: 1;
     min-width: 60px;
   }
@@ -640,9 +641,9 @@
     align-items: center;
     justify-content: center;
     gap: 2px;
-    min-width: 54px;
+    min-width: 44px;
     height: 44px;
-    padding: 0 8px;
+    padding: 0 6px;
     border: 0;
     background: none;
     font-size: 11.5px;
@@ -665,22 +666,25 @@
     background: var(--bg-selected);
     color: var(--text);
   }
-  /* 紧凑模式：按钮只留图标，文字看 title 提示 */
-  .compact .tb {
+  /* 收起时按钮只留图标，文字看 title 提示：1 级先收右边，2 级再收中间 */
+  .lv1 .right .tb,
+  .lv2 .center .tb {
     min-width: 34px;
     padding: 0 6px;
   }
-  .compact .tb .lbl {
+  .lv1 .right .tb .lbl,
+  .lv2 .center .tb .lbl {
     display: none;
   }
-  .compact .tb .ico {
+  .lv1 .right .tb .ico,
+  .lv2 .center .tb .ico {
     font-size: 18px;
   }
-  .compact .tb.more {
+  .lv2 .center .tb.more {
     min-width: 0;
     padding: 0;
   }
-  .compact .sep {
+  .lv2 .sep {
     margin: 0 3px;
   }
   .tb.icon {
@@ -727,10 +731,14 @@
     align-items: center;
     gap: 4px;
     position: relative;
-    flex: 0 0 240px;
+    flex: 0 0 220px;
   }
-  .search.wide {
-    flex-basis: 330px;
+  .lv1 .search {
+    flex-basis: 160px;
+  }
+  .search.wide,
+  .lv1 .search.wide {
+    flex-basis: 300px;
   }
   /* 窗口太窄时搜索框浮在工具栏下面 */
   .search.pop {
