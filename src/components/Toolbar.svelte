@@ -515,7 +515,7 @@
   .toolbar {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     position: relative;
     height: 52px;
     padding: 0 12px;
@@ -641,9 +641,9 @@
     align-items: center;
     justify-content: center;
     gap: 2px;
-    min-width: 44px;
+    min-width: 36px;
     height: 44px;
-    padding: 0 6px;
+    padding: 0 5px;
     border: 0;
     background: none;
     font-size: 11.5px;
@@ -723,7 +723,7 @@
   .sep {
     width: 1px;
     height: 26px;
-    margin: 0 6px;
+    margin: 0 4px;
     background: var(--border);
   }
   .search {
@@ -731,7 +731,7 @@
     align-items: center;
     gap: 4px;
     position: relative;
-    flex: 0 0 220px;
+    flex: 0 0 200px;
   }
   .lv1 .search {
     flex-basis: 160px;
