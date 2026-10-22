@@ -50,7 +50,7 @@ Get the latest installer from the [**Releases page**](https://github.com/ADroidC
 ## Features
 
 ### History and branches
-- **Commit graph** in the style of GitKraken, with a dark theme by default (light and system themes available).
+- **Commit graph** in the style of GitKraken, with a dark theme by default.
 - **Multiple repositories in tabs**; open tabs are restored on the next launch.
 - **Focus mode** — show only the current branch, or any chosen set of branches, to declutter repositories with many branches. Filters are remembered per repository.
 - **Search** commits by message, author or hash.
@@ -90,6 +90,8 @@ Get the latest installer from the [**Releases page**](https://github.com/ADroidC
 - **Multiple identities** — keep separate work and personal names and emails and switch automatically by folder (using git's own includeIf, so it works on the command line too). The commit box always shows which identity you're about to commit as.
 
 ### App
+- **Settings window** (⚙ or ⌘, / Ctrl+,) — appearance, auto fetch, default clone location, default merge option, diff layout, global commit identity, editor, and reminders in one place. Changes apply immediately.
+- **Color themes** — built-in Dark, Light, One Dark, GitHub Light, Nord and Solarized Light, or follow the system. Create your own from any theme by changing backgrounds, text, accent, added / deleted colors and branch line colors with a live preview, and share themes as JSON.
 - **Command palette** (⌘K / Ctrl+K) — run any command, switch branches, check out remote branches, jump to tags or open repositories by typing a few letters.
 - **Reminders and notifications** — recurring reminders such as “drink water every hour” or “stand up every two hours” within your working hours, daily reminders for tasks that are due or overdue, and notifications when a long push / pull / clone finishes or new commits arrive on your branch. Optionally keeps running in the menu bar / system tray after the window is closed.
 - **English and Chinese UI** — follows the system language; switch any time in Settings (⚙).
@@ -105,12 +107,14 @@ On Windows, use Ctrl instead of ⌘.
 | Shortcut | Action |
 |---|---|
 | ⌘K / ⌘⇧P | Command palette |
+| ⌘, | Open settings |
 | ⌘O / ⌘T | Open a repository in a new tab |
 | ⌘1 – ⌘9 | Switch to tab N |
 | ⌘F | Search commits (Enter / Shift+Enter for next / previous) |
 | ⌘R / F5 | Refresh |
 | ⌘Z | Undo the last operation (undoes text when an input is focused) |
 | ↑ ↓ / j k | Move between commits |
+| ⌘-click / Shift-click | Select multiple commits (Esc to clear) |
 | ⌘Enter | Commit (in the commit message box) |
 | Esc | Close the diff |
 
