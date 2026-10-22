@@ -97,6 +97,11 @@ Get the latest installer from the [**Releases page**](https://github.com/ADroidC
 - **English and Chinese UI** — follows the system language; switch any time in Settings (⚙).
 - **Automatic updates** — GitTree checks GitHub Releases in the background and installs new versions in one click. Updates are signed and verified before installing.
 
+<p align="center">
+  <img src="docs/settings-theme.png" alt="Settings: color themes" width="49%">
+  <img src="docs/settings-notify.png" alt="Settings: reminders" width="49%">
+</p>
+
 ### Task board
 A global Kanban board (to do / in progress / review / done, columns customizable) with assignees, priorities, due dates and checklists. Finished tasks are archived automatically after a configurable number of days and stay searchable. Tasks can be linked to a repository and branch. Data is stored locally and never written into your repositories.
 
