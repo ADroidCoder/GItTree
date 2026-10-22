@@ -2,7 +2,8 @@
   import type { FlowKind } from "../lib/api";
   import { bestScore } from "../lib/fuzzy";
   import { lang, setLang, t } from "../lib/i18n";
-  import { activate, activeTab, addRemote, addSubmodule, addWorktree, app, closeTab, copyRemoteUrl, createPull, forcePush, openRemoteWeb, openFlow, openIn, openRepo, openSettings, recentRepos, setTheme, showTasks, startBisect, trackWithLfs } from "../lib/store.svelte";
+  import { PRESETS, setTheme, themes } from "../lib/themes.svelte";
+  import { activate, activeTab, addRemote, addSubmodule, addWorktree, app, closeTab, copyRemoteUrl, createPull, forcePush, openRemoteWeb, openFlow, openIn, openRepo, openSettings, recentRepos, showTasks, startBisect, trackWithLfs } from "../lib/store.svelte";
   import { checkUpdate } from "../lib/updater.svelte";
   import { shareUrl } from "../lib/util";
 
@@ -131,9 +132,8 @@
       { group: g, label: t("提醒与通知…"), keys: "tixing tx tongzhi tz reminders notifications heshui", run: () => openSettings("notify") },
       { group: g, label: t("设置…"), hint: `${mod},`, keys: "shezhi sz settings preferences", run: () => openSettings() },
       { group: g, label: t("检查更新…"), keys: "jiancha gengxin jcgx check update", run: () => checkUpdate(true) },
-      { group: g, label: t("主题：深色"), keys: "zhuti zt shense dark theme", run: () => setTheme("dark") },
-      { group: g, label: t("主题：浅色"), keys: "zhuti zt qianse light theme", run: () => setTheme("light") },
       { group: g, label: t("主题：跟随系统"), keys: "zhuti zt xitong system theme", run: () => setTheme("system") },
+      ...[...PRESETS, ...themes.custom].map((th) => ({ group: g, label: t("主题：{0}", th.name), keys: `zhuti zt theme ${th.id} ${th.name}`, run: () => setTheme(th.id) })),
       lang === "zh"
         ? { group: g, label: "Switch to English", keys: "yuyan yy yingwen language english", run: () => setLang("en") }
         : { group: g, label: "切换到中文", keys: "yuyan yy zhongwen language chinese", run: () => setLang("zh") },

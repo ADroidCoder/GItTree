@@ -3,9 +3,10 @@
   import { api, type MergeMode } from "../lib/api";
   import { savedLang, setLang, t, type Lang } from "../lib/i18n";
   import { prefs } from "../lib/prefs";
-  import { activeTab, app, errorText, setAutoFetch, setEditor, setTheme, toast, type SettingsSection, type Theme } from "../lib/store.svelte";
+  import { activeTab, app, errorText, setAutoFetch, setEditor, toast, type SettingsSection } from "../lib/store.svelte";
   import { checkUpdate, updater } from "../lib/updater.svelte";
   import NotifySettings from "./NotifySettings.svelte";
+  import ThemeSettings from "./ThemeSettings.svelte";
 
   const SECTIONS: { id: SettingsSection; label: string; icon: string }[] = [
     { id: "appearance", label: t("外观"), icon: "◐" },
@@ -22,11 +23,6 @@
   }
 
   // ---------- 外观 ----------
-  const THEMES: { value: Theme; label: string }[] = [
-    { value: "dark", label: t("深色") },
-    { value: "light", label: t("浅色") },
-    { value: "system", label: t("跟随系统") },
-  ];
   /** 语言名用它自己的语言写，看不懂当前界面也能找到 */
   const LANGS: { value: Lang | null; label: string }[] = [
     { value: null, label: t("跟随系统语言") },
@@ -134,14 +130,7 @@
 
       <div class="body">
         {#if section.id === "appearance"}
-          <div class="item">
-            <div class="label">{t("主题")}</div>
-            <div class="seg">
-              {#each THEMES as th (th.value)}
-                <button class:on={app.theme === th.value} onclick={() => setTheme(th.value)}>{th.label}</button>
-              {/each}
-            </div>
-          </div>
+          <ThemeSettings />
           <div class="item">
             <div class="label">
               {t("语言")}
@@ -252,14 +241,14 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding-top: 7vh;
+    padding-top: 5vh;
     background: rgba(0, 0, 0, 0.45);
   }
   .dialog {
     display: flex;
-    width: 780px;
+    width: 860px;
     max-width: calc(100vw - 32px);
-    height: min(600px, 86vh);
+    height: min(680px, 88vh);
     overflow: hidden;
     background: var(--bg-menu);
     border: 1px solid var(--border);

@@ -643,21 +643,13 @@ export interface FlowDialogSpec {
   name?: string;
 }
 
-export type Theme = "dark" | "light" | "system";
-
 export type SettingsSection = "appearance" | "git" | "identity" | "tools" | "notify" | "about";
 
 export function openSettings(section: SettingsSection = "appearance") {
   app.settings = section;
 }
 
-function initialTheme(): Theme {
-  const t = document.documentElement.dataset.theme;
-  return t === "light" || t === "system" ? t : "dark";
-}
-
 export const app = $state({
-  theme: initialTheme(),
   /** git 等着用户输入用户名、密码等 */
   askpass: [] as AskPassRequest[],
   /** 克隆 / 新建仓库对话框 */
@@ -764,16 +756,6 @@ export function startAutoFetch() {
     due?.autoFetch();
   }, 20_000);
   return () => clearInterval(timer);
-}
-
-export function setTheme(t: Theme) {
-  app.theme = t;
-  document.documentElement.dataset.theme = t;
-  try {
-    localStorage.setItem("gittree.theme", t);
-  } catch {
-    // 忽略
-  }
 }
 
 /** 打开 Git Flow 对话框（初始化 / 开始 / 完成） */

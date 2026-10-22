@@ -2,7 +2,8 @@
   import { t } from "../lib/i18n";
   import { onMount, untrack } from "svelte";
   import { api, type Edge, type RefInfo, type Row } from "../lib/api";
-  import { app, drag as refDrag, type RepoTab } from "../lib/store.svelte";
+  import { drag as refDrag, type RepoTab } from "../lib/store.svelte";
+  import { themes } from "../lib/themes.svelte";
   import { formatDate, initials, laneColor, relativeTime } from "../lib/util";
 
   let {
@@ -145,7 +146,7 @@
   let frame = 0;
   $effect(() => {
     // 这些值变化时重绘
-    void [tick, scrollTop, vh, graphWidth, tab.selectedRow, pickedRows, headRow, off, active, app.theme, systemDark];
+    void [tick, scrollTop, vh, graphWidth, tab.selectedRow, pickedRows, headRow, off, active, themes.version, systemDark];
     if (active && !frame) frame = requestAnimationFrame(draw);
   });
 

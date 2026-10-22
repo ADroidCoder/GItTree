@@ -11,10 +11,23 @@
         try {
           theme = localStorage.getItem("gittree.theme") || "dark";
         } catch (e) {}
-        document.documentElement.dataset.theme = theme;
+        var root = document.documentElement;
+        // 自定义和内置的其他主题：themes.svelte.ts 缓存了算好的配色
+        var boot = null;
+        try {
+          boot = JSON.parse(localStorage.getItem("gittree.themeVars") || "null");
+        } catch (e) {}
+        if (boot && boot.vars) {
+          root.dataset.theme = boot.base;
+          for (var k in boot.vars) root.style.setProperty(k, boot.vars[k]);
+          root.style.background = boot.vars["--bg-graph"];
+          root.style.colorScheme = boot.base;
+          return;
+        }
+        root.dataset.theme = theme;
         var light = theme === "light" || (theme === "system" && !matchMedia("(prefers-color-scheme: dark)").matches);
-        document.documentElement.style.background = light ? "#ffffff" : "#1c1e23";
-        document.documentElement.style.colorScheme = light ? "light" : "dark";
+        root.style.background = light ? "#f8f9fb" : "#1c1e23";
+        root.style.colorScheme = light ? "light" : "dark";
       })();
     </script>
     <style>

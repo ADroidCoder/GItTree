@@ -3,21 +3,22 @@
     "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   --mono: "SF Mono", Menlo, Consolas, "Cascadia Mono", "JetBrains Mono", monospace;
 
-  /* 浅色主题 */
-  --bg-graph: #ffffff;
-  --bg-side: #f5f6f8;
-  --bg-toolbar: #eceef2;
-  --bg-tabbar: #dcdfe5;
+  /* 浅色主题：参考 GitKraken 浅色主题的层次，标签栏、工具栏、侧边栏逐级变浅的冷灰，
+     提交图是略带灰的白，只有菜单、卡片、输入框是纯白，看起来是“浮”在上面的 */
+  --bg-graph: #f8f9fb;
+  --bg-side: #eceef2;
+  --bg-toolbar: #e2e5ea;
+  --bg-tabbar: #d3d7de;
   --bg-menu: #ffffff;
   --bg-card: #ffffff;
-  --bg-hover: rgba(47, 111, 235, 0.07);
-  --bg-selected: rgba(47, 111, 235, 0.16);
-  --bg-hit: rgba(255, 196, 0, 0.25);
-  --bg-wip: #f3f6fc;
-  --bg-hunk: #eef2fb;
+  --bg-hover: rgba(47, 111, 235, 0.08);
+  --bg-selected: rgba(47, 111, 235, 0.17);
+  --bg-hit: rgba(255, 196, 0, 0.28);
+  --bg-wip: #eef1f7;
+  --bg-hunk: #e6ebf5;
   --bg-add: rgba(46, 160, 67, 0.14);
   --bg-del: rgba(220, 50, 50, 0.12);
-  --bg-empty: rgba(0, 0, 0, 0.03);
+  --bg-empty: rgba(0, 0, 0, 0.035);
   /* 行内差异：改动行里真正变了的部分 */
   --bg-add-strong: rgba(46, 160, 67, 0.34);
   --bg-del-strong: rgba(220, 50, 50, 0.3);
@@ -30,20 +31,20 @@
   --syn-type: #953800;
   --syn-attr: #116329;
   --syn-meta: #6639ba;
-  --border: #dde1e8;
-  --border-strong: #c9ced8;
-  --text: #1f2430;
-  --text-dim: #5f6878;
-  --text-faint: #98a0ae;
+  --border: #d5dae2;
+  --border-strong: #bec5d0;
+  --text: #1d2129;
+  --text-dim: #535c6b;
+  --text-faint: #868f9d;
   --accent: #2f6feb;
   --add: #1a7f37;
   --del: #cf222e;
   --warn: #b07800;
-  --scrollbar: rgba(0, 0, 0, 0.2);
-  --scrollbar-hover: rgba(0, 0, 0, 0.35);
+  --scrollbar: rgba(0, 0, 0, 0.22);
+  --scrollbar-hover: rgba(0, 0, 0, 0.38);
   --input-bg: #ffffff;
   --button-bg: #ffffff;
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  --shadow: 0 10px 30px rgba(16, 24, 40, 0.18);
   color-scheme: light;
 }
 

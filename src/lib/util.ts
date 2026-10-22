@@ -1,21 +1,6 @@
 import { t } from "./i18n";
-/** 分支线的颜色：GitKraken 经典的 10 色（青、蓝、紫、品红、粉、红、橙、黄、绿、青绿） */
-export const PALETTE = [
-  "#15a0bf",
-  "#0669f7",
-  "#8e00c2",
-  "#c517b6",
-  "#d90171",
-  "#cd0101",
-  "#f25d2e",
-  "#f2ca33",
-  "#7bd938",
-  "#2ece9d",
-];
-
-export function laneColor(i: number) {
-  return PALETTE[i % PALETTE.length];
-}
+/** 分支线的颜色跟着主题走 */
+export { laneColor } from "./themes.svelte";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
