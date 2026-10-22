@@ -4,6 +4,8 @@
 
 **免费、开源、高性能的 Git 桌面客户端，支持 macOS 和 Windows。**
 
+GitKraken、Sourcetree、Fork 的免费开源替代品。
+
 基于 Rust 和 Tauri 构建。几十万个提交、上千个分支的仓库也能保持流畅。
 
 [![Build](https://github.com/ADroidCoder/GItTree/actions/workflows/build.yml/badge.svg)](https://github.com/ADroidCoder/GItTree/actions/workflows/build.yml)
@@ -29,6 +31,18 @@
 - **原生、轻量**：使用系统自带的 WebView，不打包 Chromium，安装包只有几 MB。
 - **行为和命令行完全一致**：所有修改操作都交给系统安装的 `git` 执行，hooks、GPG 签名、SSH 密钥、凭据管理器都和终端里一样。
 - **免费开源**：Apache 2.0 协议，不需要注册账号，没有数据收集，没有付费版。
+
+### 和其他 Git 客户端对比
+
+| | GitTree | GitKraken | Sourcetree | Fork | GitHub Desktop |
+|---|---|---|---|---|---|
+| 价格 | 免费 | 免费版只能用公开仓库和本地仓库，私有仓库需订阅 | 免费 | 付费买断，可免费试用 | 免费 |
+| 开源 | ✅ Apache 2.0 | ❌ | ❌ | ❌ | ✅ MIT |
+| 需要注册账号 | 不需要 | 需要 | Windows 版安装时需要 Atlassian / Bitbucket 账号 | 不需要 | 可选（登录 GitHub） |
+| 技术 | Rust + 系统 WebView | Electron | 原生 | 原生 | Electron |
+| 平台 | macOS、Windows | macOS、Windows、Linux | macOS、Windows | macOS、Windows | macOS、Windows |
+
+<sub>其他客户端的信息来自各自官网和公开资料，截至 2026 年 10 月，可能有变化，请以官网为准。GitTree 暂时没有 Linux 版。</sub>
 
 ## 下载
 

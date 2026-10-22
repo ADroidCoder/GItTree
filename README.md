@@ -4,6 +4,8 @@
 
 **A fast, free and open-source Git desktop client for macOS and Windows.**
 
+A free, open-source alternative to GitKraken, Sourcetree and Fork.
+
 Built with Rust and Tauri. Stays smooth on repositories with hundreds of thousands of commits and thousands of branches.
 
 [![Build](https://github.com/ADroidCoder/GItTree/actions/workflows/build.yml/badge.svg)](https://github.com/ADroidCoder/GItTree/actions/workflows/build.yml)
@@ -29,6 +31,18 @@ Most Git GUIs slow down as a repository grows: opening takes seconds, scrolling 
 - **Native and lightweight** — an installer of only a few megabytes, built on the system WebView instead of a bundled Chromium.
 - **Behaves exactly like the command line** — all write operations are delegated to your installed `git`, so hooks, GPG signing, SSH keys and credential managers work the same way they do in the terminal.
 - **Free and open source** — Apache 2.0, no account, no telemetry, no paid tier.
+
+### Compared with other Git clients
+
+| | GitTree | GitKraken | Sourcetree | Fork | GitHub Desktop |
+|---|---|---|---|---|---|
+| Price | Free | Free plan covers public and local repos only; private repos need a subscription | Free | Paid one-time license, free evaluation | Free |
+| Open source | ✅ Apache 2.0 | ❌ | ❌ | ❌ | ✅ MIT |
+| Account required | No | Yes | An Atlassian / Bitbucket account is required to install on Windows | No | Optional (GitHub sign-in) |
+| Built with | Rust + system WebView | Electron | Native | Native | Electron |
+| Platforms | macOS, Windows | macOS, Windows, Linux | macOS, Windows | macOS, Windows | macOS, Windows |
+
+<sub>Information about other clients comes from their websites and public sources as of October 2026 and may change — check their websites for the latest. GitTree does not have a Linux build yet.</sub>
 
 ## Download
 
