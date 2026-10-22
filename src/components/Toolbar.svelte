@@ -64,6 +64,7 @@
       fit();
     }
   }
+
   $effect(() => {
     if (!bar) return;
     const ro = new ResizeObserver(fit);
@@ -731,17 +732,19 @@
     align-items: center;
     gap: 4px;
     position: relative;
-    flex: 0 0 200px;
+    /* 用 width 而不是 flex-basis 定宽：WebKit 算右边一组的内容宽度时不认 flex-basis，会少算、误判成放不下 */
+    flex: none;
+    width: 200px;
   }
   .lv1 .search {
-    flex-basis: 160px;
+    width: 160px;
   }
   .search.wide,
   .lv1 .search.wide {
-    flex-basis: 300px;
+    width: 300px;
   }
   /* 窗口太窄时搜索框浮在工具栏下面 */
-  .search.pop {
+  .toolbar .search.pop {
     position: absolute;
     top: calc(100% + 4px);
     right: 52px;
