@@ -27,6 +27,11 @@
   let scroller = $state<HTMLDivElement>();
   let scrollTop = $state(0);
   let viewH = $state(600);
+  /** 并排视图左右两边共用的横向滚动位置 */
+  let hx = $state(0);
+  let hbars: HTMLDivElement[] = $state([]);
+  /** 铺满窗口查看 */
+  let full = $state(false);
 
   function toggleSplit() {
     split = !split;
@@ -179,7 +184,7 @@
     return out;
   });
 
-  /** 并排视图每半边的最小宽度（字符数）：按最长的一行算，长行才能横向滚动看到 */
+  /** 并排视图最长一行的字符数：横向滚动条按它算可滚动的宽度 */
   const splitCols = $derived.by(() => {
     if (!split || !diff) return 0;
     let max = 0;
@@ -223,10 +228,32 @@
 
   function onKey(e: KeyboardEvent) {
     if (e.key !== "Escape") return;
-    // 有选中的行时 Esc 先取消选择
+    // 有选中的行时 Esc 先取消选择，全屏时先退出全屏
     if (sel) sel = null;
+    else if (full) full = false;
     else onClose();
   }
+
+  /** 两条横向滚动条拖哪条，另一条和两边的代码都跟着动 */
+  function onHScroll(e: Event) {
+    hx = (e.currentTarget as HTMLDivElement).scrollLeft;
+    for (const b of hbars) if (b && b.scrollLeft !== hx) b.scrollLeft = hx;
+  }
+
+  /** 触控板左右滑、Shift+滚轮：转给横向滚动条 */
+  function onWheel(e: WheelEvent) {
+    if (!split || !hbars[0]) return;
+    const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.shiftKey ? e.deltaY : 0;
+    if (dx) hbars[0].scrollLeft += dx;
+  }
+
+  // 换了文件或切换视图时回到最左边
+  $effect(() => {
+    void target;
+    void split;
+    hx = 0;
+    for (const b of hbars) if (b) b.scrollLeft = 0;
+  });
 
   /** 一行代码占几列：制表符按 8 列对齐，中文等全角字符占两列 */
   function textCols(s: string) {
@@ -241,7 +268,7 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="diff">
+<div class="diff" class:full>
   <div class="bar">
     <div class="title">
       {#if target.oldPath && target.oldPath !== target.path}
@@ -265,6 +292,7 @@
         >
       {/if}
       <button onclick={toggleSplit}>{split ? t("上下对比") : t("左右对比")}</button>
+      <button class:on={full} onclick={() => (full = !full)} title={full ? t("退出全屏 (Esc)") : t("铺满窗口查看")}>{full ? t("⤡ 还原") : t("⤢ 全屏")}</button>
       {#if !embedded}<button onclick={onClose} title={t("关闭 (Esc)")}>✕</button>{/if}
     </div>
   </div>
@@ -295,11 +323,12 @@
       bind:this={scroller}
       bind:clientHeight={viewH}
       onscroll={() => (scrollTop = scroller!.scrollTop)}
+      onwheel={onWheel}
     >
       <div
         class="spacer"
         class:split
-        style="height:{items.length * LINE_H + (diff.truncated ? 40 : 0)}px;--half:calc({splitCols}ch + 80px)"
+        style="height:{items.length * LINE_H + (diff.truncated ? 40 : 0)}px;--hx:{-hx}px"
       >
         <div class="lines" style="transform: translateY({start * LINE_H}px)">
           {#each items.slice(start, end) as it, k (start + k)}
@@ -349,13 +378,13 @@
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div class="half {it.left ? (it.left.kind === '-' ? 'kdel' : 'kctx') : 'kempty'}" class:picked={isSel(it.h, it.li)}>
                   <span class="no" class:pick={canStageHunk && it.left?.kind === "-"} onclick={(e) => toggleLine(e, pr.h, pr.li)}>{it.left?.old ?? ""}</span>
-                  <span class="code">{#if it.left}{@html html(it.left)}{/if}</span>
+                  <span class="clip"><span class="code shift">{#if it.left}{@html html(it.left)}{/if}</span></span>
                 </div>
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div class="half {it.right ? (it.right.kind === '+' ? 'kadd' : 'kctx') : 'kempty'}" class:picked={isSel(it.h, it.ri)}>
                   <span class="no" class:pick={canStageHunk && it.right?.kind === "+"} onclick={(e) => toggleLine(e, pr.h, pr.ri)}>{it.right?.new ?? ""}</span>
-                  <span class="code">{#if it.right}{@html html(it.right)}{/if}</span>
+                  <span class="clip"><span class="code shift">{#if it.right}{@html html(it.right)}{/if}</span></span>
                 </div>
               </div>
             {/if}
@@ -366,6 +395,18 @@
         {/if}
       </div>
     </div>
+    {#if split}
+      <!-- 左右各一条横向滚动条，同步滚动；行号那一截不滚 -->
+      <div class="hbars">
+        {#each [0, 1] as i (i)}
+          <div class="hside">
+            <div class="hbar" bind:this={hbars[i]} onscroll={onHScroll}>
+              <div style="width:calc({splitCols}ch + 24px)"></div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -374,6 +415,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-width: 0;
     background: var(--bg-graph);
   }
   .bar {
@@ -533,7 +575,48 @@
     width: 100%;
   }
   .spacer.split {
-    width: calc(var(--half) * 2);
+    width: 100%;
+  }
+  /* 代码往左滚时不压到行号上 */
+  .clip {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .shift {
+    display: inline-block;
+    transform: translateX(var(--hx));
+  }
+  .hbars {
+    display: flex;
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 12.5px;
+  }
+  .hside {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-left: 48px;
+  }
+  .hside + .hside {
+    border-left: 1px solid var(--border);
+  }
+  .hbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .hbar > div {
+    height: 1px;
+  }
+  .diff.full {
+    position: fixed;
+    top: 38px;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    box-shadow: var(--shadow);
   }
   .half {
     display: flex;

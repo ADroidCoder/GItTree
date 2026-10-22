@@ -1111,6 +1111,10 @@ const en: Record<string, string> = {
   按文件路径搜索提交: "Search commits by file path",
   按代码内容搜索提交: "Search commits by code",
   按日期搜索提交: "Search commits by date",
+  "退出全屏 (Esc)": "Exit full screen (Esc)",
+  铺满窗口查看: "View in full window",
+  "⤡ 还原": "⤡ Restore",
+  "⤢ 全屏": "⤢ Full screen",
 };
 
 export default en;
