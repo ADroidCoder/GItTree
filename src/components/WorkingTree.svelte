@@ -260,7 +260,7 @@
     {/if}
 
     <div class="sec-head">
-      <span>{t("未暂存 ({0})", unstaged.length)}</span>
+      <span class="sec-title">{t("未暂存 ({0})", unstaged.length)}</span>
       <span class="sec-acts">
         {#if sel.section === "unstaged" && selected.length > 1}
           <span class="sel-count">{t("已选 {0}", selected.length)}</span>
@@ -289,7 +289,7 @@
     </FileList>
 
     <div class="sec-head">
-      <span>{t("已暂存 ({0})", staged.length)}</span>
+      <span class="sec-title">{t("已暂存 ({0})", staged.length)}</span>
       <span class="sec-acts">
         {#if sel.section === "staged" && selected.length > 1}
           <span class="sel-count">{t("已选 {0}", selected.length)}</span>
@@ -381,6 +381,10 @@
     padding: 6px 10px 0 12px;
   }
   .tip {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--text-faint);
     font-size: 11.5px;
   }
@@ -390,6 +394,8 @@
     text-transform: none;
   }
   .view-toggle {
+    flex-shrink: 0;
+    white-space: nowrap;
     height: 22px;
     font-size: 12px;
   }
@@ -406,9 +412,21 @@
   .sec-head.conflict {
     color: var(--del);
   }
+  /* 面板窄时标题省略，按钮保持完整 */
+  .sec-head {
+    gap: 8px;
+  }
+  .sec-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .sec-acts {
     display: flex;
+    flex-shrink: 0;
     gap: 6px;
+    white-space: nowrap;
   }
   .sec-acts button,
   :global(.acts button) {

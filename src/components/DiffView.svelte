@@ -285,14 +285,18 @@
     </div>
     <div class="actions">
       {#if !embedded}
-        <button onclick={() => tab.openFile(target.path, "history")} title={t("查看修改过这个文件的所有提交")}>{t("历史")}</button>
+        <button onclick={() => tab.openFile(target.path, "history")} title={t("查看修改过这个文件的所有提交")}><span class="ico">◷</span><span class="lbl">{t("历史")}</span></button>
         <button
           onclick={() => tab.openFile(target.path, "blame", target.source === "commit" ? target.oid! : null)}
-          title={t("逐行查看是谁在哪次提交里改的")}>Blame</button
+          title={t("逐行查看是谁在哪次提交里改的")}><span class="ico">☰</span><span class="lbl">Blame</span></button
         >
       {/if}
-      <button onclick={toggleSplit}>{split ? t("上下对比") : t("左右对比")}</button>
-      <button class:on={full} onclick={() => (full = !full)} title={full ? t("退出全屏 (Esc)") : t("铺满窗口查看")}>{full ? t("⤡ 还原") : t("⤢ 全屏")}</button>
+      <button onclick={toggleSplit} title={split ? t("上下对比") : t("左右对比")}
+        ><span class="ico">{split ? "▤" : "◫"}</span><span class="lbl">{split ? t("上下对比") : t("左右对比")}</span></button
+      >
+      <button class:on={full} onclick={() => (full = !full)} title={full ? t("退出全屏 (Esc)") : t("铺满窗口查看")}
+        ><span class="ico">{full ? "⤡" : "⤢"}</span><span class="lbl">{full ? t("退出全屏") : t("全屏")}</span></button
+      >
       {#if !embedded}<button onclick={onClose} title={t("关闭 (Esc)")}>✕</button>{/if}
     </div>
   </div>
@@ -416,6 +420,7 @@
     flex-direction: column;
     height: 100%;
     min-width: 0;
+    container-type: inline-size;
     background: var(--bg-graph);
   }
   .bar {
@@ -462,7 +467,28 @@
   }
   .actions {
     display: flex;
+    flex-shrink: 0;
     gap: 6px;
+  }
+  .actions button {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 26px;
+    padding: 0 10px;
+    white-space: nowrap;
+  }
+  .actions .ico {
+    color: var(--text-dim);
+  }
+  /* 区域窄时按钮只留图标，文字看鼠标悬停提示 */
+  @container (max-width: 620px) {
+    .actions .lbl {
+      display: none;
+    }
+    .actions button {
+      padding: 0 8px;
+    }
   }
   .msg {
     padding: 40px;

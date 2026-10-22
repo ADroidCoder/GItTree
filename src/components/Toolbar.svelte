@@ -15,21 +15,29 @@
 
   let picker = $state<{ x: number; y: number } | null>(null);
 
-  /** 窗口窄到放不下时只显示按钮图标；记下放下文字需要的宽度，够了再恢复 */
+  /**
+   * 窗口窄到放不下时逐级收起：1 级按钮只显示图标，2 级搜索框也收成一个按钮（点开浮在下面）。
+   * 记下每一级放得下需要的宽度，窗口够宽了再一级级恢复。
+   */
   let bar = $state<HTMLDivElement>();
   let leftEl = $state<HTMLDivElement>();
   let rightEl = $state<HTMLDivElement>();
-  let compact = $state(false);
-  let fullWidth = 0;
+  let level = $state(0);
+  const compact = $derived(level >= 1);
+  const tight = $derived(level >= 2);
+  /** 收成按钮后点开的搜索框 */
+  let searchOpen = $state(false);
+  const needWidth = [0, 0];
   function fit() {
     if (!bar) return;
     const over = (el?: HTMLElement) => (el ? Math.max(0, el.scrollWidth - el.clientWidth) : 0);
-    const extra = over(leftEl) + over(rightEl);
-    if (!compact && extra > 1) {
-      compact = true;
-      fullWidth = bar.clientWidth + extra;
-    } else if (compact && bar.clientWidth >= fullWidth) {
-      compact = false;
+    const extra = over(leftEl) + over(rightEl) + over(bar);
+    if (extra > 1 && level < 2) {
+      needWidth[level] = bar.clientWidth + extra;
+      level++;
+      requestAnimationFrame(fit);
+    } else if (level > 0 && extra <= 1 && bar.clientWidth >= needWidth[level - 1]) {
+      level--;
       requestAnimationFrame(fit);
     }
   }
@@ -41,7 +49,7 @@
   });
   // 分支名、语言变了也可能放不下
   $effect(() => {
-    void [tab?.name, tab?.repo?.head?.branch, focusLabel, tab?.search.hits.length, tab?.repo];
+    void [tab?.name, tab?.repo?.head?.branch, focusLabel, tab?.search.hits.length, tab?.search.kind, tab?.repo];
     requestAnimationFrame(fit);
   });
   let branchMenu = $state<{ x: number; y: number } | null>(null);
@@ -157,6 +165,7 @@
   /** 不指定方式时：正在按日期搜就换回按说明搜 */
   export async function focusSearch(kind?: SearchKind) {
     if (!tab) return;
+    searchOpen = true;
     setKind(kind ?? (tab.search.kind === "date" ? "text" : tab.search.kind));
     await tick();
     if (tab.search.kind === "date") fromInput?.focus();
@@ -294,6 +303,7 @@
     if (e.key === "Escape") {
       tab.search.query = "";
       tab.search.from = tab.search.to = "";
+      searchOpen = false;
       tab.search.hits = [];
       lastQuery = "";
       searchInput?.blur();
@@ -395,23 +405,28 @@
       <button class="tb" class:on={tab.logOpen} onclick={() => (tab.logOpen = !tab.logOpen)} title={t("查看 git 命令和输出日志")}>
         <span class="ico">≡</span><span class="lbl">{t("日志")}</span>
       </button>
-      <div class="search" class:wide={tab.search.kind === "date"}>
-        <button class="kind" onclick={showKindMenu} title={t("搜索方式：{0}", kindInfo.label)}>⌕ {kindInfo.short}<span class="caret">▾</span></button>
-        {#if tab.search.kind === "date"}
-          <input class="day" type="date" bind:this={fromInput} bind:value={tab.search.from} max={tab.search.to || undefined} onchange={doSearch} onkeydown={searchKey} title={t("从这天起")} />
-          <span class="dash">–</span>
-          <input class="day" type="date" bind:value={tab.search.to} min={tab.search.from || undefined} onchange={doSearch} onkeydown={searchKey} title={t("到这天为止")} />
-        {:else}
-          <input bind:this={searchInput} bind:value={tab.search.query} {placeholder} onkeydown={searchKey} />
-        {/if}
-        {#if searching}
-          <span class="hits">{t("搜索中…")}</span>
-        {:else if tab.search.hits.length}
-          <span class="hits">{tab.search.index + 1}/{tab.search.hits.length}{tab.search.hits.length >= 5000 ? "+" : ""}</span>
-          <button class="nav" onclick={() => gotoHit(tab.search.index - 1)}>▲</button>
-          <button class="nav" onclick={() => gotoHit(tab.search.index + 1)}>▼</button>
-        {/if}
-      </div>
+      {#if tight}
+        <button class="tb icon" class:on={searchOpen || tab.search.hits.length > 0} onclick={() => (searchOpen ? (searchOpen = false) : focusSearch())} title={t("搜索提交 ({0}F)", isMac ? "⌘" : "Ctrl+")}>⌕</button>
+      {/if}
+      {#if !tight || searchOpen}
+        <div class="search" class:wide={tab.search.kind === "date"} class:pop={tight}>
+          <button class="kind" onclick={showKindMenu} title={t("搜索方式：{0}", kindInfo.label)}>⌕ {kindInfo.short}<span class="caret">▾</span></button>
+          {#if tab.search.kind === "date"}
+            <input class="day" type="date" bind:this={fromInput} bind:value={tab.search.from} max={tab.search.to || undefined} onchange={doSearch} onkeydown={searchKey} title={t("从这天起")} />
+            <span class="dash">–</span>
+            <input class="day" type="date" bind:value={tab.search.to} min={tab.search.from || undefined} onchange={doSearch} onkeydown={searchKey} title={t("到这天为止")} />
+          {:else}
+            <input bind:this={searchInput} bind:value={tab.search.query} {placeholder} onkeydown={searchKey} />
+          {/if}
+          {#if searching}
+            <span class="hits">{t("搜索中…")}</span>
+          {:else if tab.search.hits.length}
+            <span class="hits">{tab.search.index + 1}/{tab.search.hits.length}{tab.search.hits.length >= 5000 ? "+" : ""}</span>
+            <button class="nav" onclick={() => gotoHit(tab.search.index - 1)}>▲</button>
+            <button class="nav" onclick={() => gotoHit(tab.search.index + 1)}>▼</button>
+          {/if}
+        </div>
+      {/if}
       <button class="tb icon" onclick={() => tab.refresh()} title={t("刷新")}>↻</button>
     </div>
   {/if}
@@ -478,6 +493,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    position: relative;
     height: 52px;
     padding: 0 12px;
     background: var(--bg-toolbar);
@@ -492,8 +508,12 @@
     flex: 1;
     min-width: 0;
   }
-  .right {
-    justify-content: flex-end;
+  /* 用 margin-left: auto 靠右而不是 justify-content: flex-end：放不下时才会溢出到右边、量得出来 */
+  .right > :first-child {
+    margin-left: auto;
+  }
+  .right > .tb {
+    flex-shrink: 0;
   }
   .center {
     display: flex;
@@ -675,6 +695,19 @@
   }
   .search.wide {
     flex-basis: 330px;
+  }
+  /* 窗口太窄时搜索框浮在工具栏下面 */
+  .search.pop {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 52px;
+    z-index: 40;
+    width: 340px;
+    padding: 6px;
+    background: var(--bg-menu);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
   }
   .kind {
     flex-shrink: 0;

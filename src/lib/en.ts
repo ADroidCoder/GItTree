@@ -1113,8 +1113,9 @@ const en: Record<string, string> = {
   按日期搜索提交: "Search commits by date",
   "退出全屏 (Esc)": "Exit full screen (Esc)",
   铺满窗口查看: "View in full window",
-  "⤡ 还原": "⤡ Restore",
-  "⤢ 全屏": "⤢ Full screen",
+  退出全屏: "Exit full screen",
+  全屏: "Full screen",
+  "搜索提交 ({0}F)": "Search commits ({0}F)",
 };
 
 export default en;

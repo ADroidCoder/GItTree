@@ -497,7 +497,8 @@
     return (e: PointerEvent) => {
       e.preventDefault();
       const startX = e.clientX;
-      const start = which === "side" ? sideW : panelW;
+      // 窗口窄时面板会被压窄，从实际宽度开始拖
+      const start = (e.currentTarget as HTMLElement).parentElement?.offsetWidth ?? (which === "side" ? sideW : panelW);
       const move = (ev: PointerEvent) => {
         const dx = ev.clientX - startX;
         if (which === "side") sideW = Math.max(170, Math.min(480, start + dx));
@@ -523,7 +524,7 @@
 {:else if !tab.repo}
   <div class="state"><div class="spinner"></div>{t("正在打开 {0}…", tab.name)}</div>
 {:else}
-  <div class="main" style="grid-template-columns: {sideW}px 1fr {panelW}px">
+  <div class="main" style="grid-template-columns: min({sideW}px, 24vw) minmax(0, 1fr) min({panelW}px, 42vw)">
     <div class="side">
       <Sidebar {tab} {onRefMenu} {onRefDblClick} {onStashMenu} {onRefDrop} {onRemoteMenu} {onWorktreeMenu} {onSubmoduleMenu} />
       <!-- svelte-ignore a11y_no_static_element_interactions -->
