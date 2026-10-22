@@ -17,7 +17,7 @@
 
   /**
    * 窗口窄到放不下时逐级收起：1 级按钮只显示图标，2 级搜索框也收成一个按钮（点开浮在下面）。
-   * 记下每一级放得下需要的宽度，窗口够宽了再一级级恢复。
+   * 每次尺寸变化都先试着展开一级、放不下再收回去；改完等 DOM 更新后立刻量，都在绘制前完成，不会闪。
    */
   let bar = $state<HTMLDivElement>();
   let leftEl = $state<HTMLDivElement>();
@@ -27,18 +27,40 @@
   const tight = $derived(level >= 2);
   /** 收成按钮后点开的搜索框 */
   let searchOpen = $state(false);
-  const needWidth = [0, 0];
-  function fit() {
-    if (!bar) return;
+  let fitting = false;
+  let fitAgain = false;
+  function overflows() {
     const over = (el?: HTMLElement) => (el ? Math.max(0, el.scrollWidth - el.clientWidth) : 0);
-    const extra = over(leftEl) + over(rightEl) + over(bar);
-    if (extra > 1 && level < 2) {
-      needWidth[level] = bar.clientWidth + extra;
-      level++;
-      requestAnimationFrame(fit);
-    } else if (level > 0 && extra <= 1 && bar.clientWidth >= needWidth[level - 1]) {
-      level--;
-      requestAnimationFrame(fit);
+    return over(leftEl) + over(rightEl) + over(bar) > 1;
+  }
+  async function fit() {
+    if (!bar) return;
+    // 正在调整时又变了尺寸：这轮结束后再来一次
+    if (fitting) {
+      fitAgain = true;
+      return;
+    }
+    fitting = true;
+    try {
+      while (level > 0) {
+        level--;
+        await tick();
+        if (overflows()) {
+          level++;
+          await tick();
+          break;
+        }
+      }
+      while (level < 2 && overflows()) {
+        level++;
+        await tick();
+      }
+    } finally {
+      fitting = false;
+    }
+    if (fitAgain) {
+      fitAgain = false;
+      fit();
     }
   }
   $effect(() => {
@@ -50,7 +72,7 @@
   // 分支名、语言变了也可能放不下
   $effect(() => {
     void [tab?.name, tab?.repo?.head?.branch, focusLabel, tab?.search.hits.length, tab?.search.kind, tab?.repo];
-    requestAnimationFrame(fit);
+    tick().then(fit);
   });
   let branchMenu = $state<{ x: number; y: number } | null>(null);
   let focusPicker = $state<{ x: number; y: number } | null>(null);
