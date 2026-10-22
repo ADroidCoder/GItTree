@@ -467,6 +467,18 @@ impl Log {
         out
     }
 
+    /// 作者时间在 [from, to] 之间的提交（秒，任一端为 None 表示不限）
+    pub fn search_time(&self, from: Option<i64>, to: Option<i64>, limit: usize) -> Vec<u32> {
+        (0..self.len())
+            .filter(|&r| {
+                let t = self.meta[r].author_time;
+                from.is_none_or(|f| t >= f) && to.is_none_or(|e| t <= e)
+            })
+            .take(limit)
+            .map(|r| r as u32)
+            .collect()
+    }
+
     /// 还没加载显示信息的行
     pub fn missing_meta_rows(&self) -> Vec<u32> {
         (0..self.len() as u32).filter(|&r| self.meta[r as usize].author == NOT_LOADED).collect()

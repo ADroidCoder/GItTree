@@ -162,3 +162,19 @@ fn focus_shows_only_selected_branches() {
     assert!(none.is_empty());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn search_by_author_time() {
+    let dir = temp_repo("search-time");
+    commit(&dir, "一", 1_700_000_000);
+    commit(&dir, "二", 1_700_100_000);
+    commit(&dir, "三", 1_700_200_000);
+    let repo = open_gix(&dir).unwrap();
+    let mut log = Log::load_repo(&repo, &[]).unwrap();
+    log.ensure_meta(&repo, 0..log.len());
+    // 最新的在第 0 行
+    assert_eq!(log.search_time(Some(1_700_050_000), None, 100), vec![0, 1]);
+    assert_eq!(log.search_time(None, Some(1_700_100_000), 100), vec![1, 2]);
+    assert_eq!(log.search_time(Some(1_700_050_000), Some(1_700_150_000), 100), vec![1]);
+    assert_eq!(log.search_time(None, None, 2), vec![0, 1]);
+}

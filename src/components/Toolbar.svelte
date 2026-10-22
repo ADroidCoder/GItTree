@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { t } from "../lib/i18n";
   import { checkUpdate, updater } from "../lib/updater.svelte";
   import { shareUrl } from "../lib/util";
   import FocusPicker from "./FocusPicker.svelte";
-  import { api } from "../lib/api";
+  import { api, type SearchKind } from "../lib/api";
   import { addRemote, addSubmodule, addWorktree, app, copyRemoteUrl, createPull, dialog, errorText, forcePush, openRemoteWeb, openFlow, openIn, openSettings, startBisect, toast, trackWithLfs, type RepoTab } from "../lib/store.svelte";
   import { isMac } from "../lib/util";
   import RepoPicker from "./RepoPicker.svelte";
@@ -141,6 +142,7 @@
   /** 当前分支是 Git Flow 分支时，按钮上显示类型 */
   const curFlow = $derived(tab?.flowBranch(tab?.repo?.head.branch));
   let searchInput = $state<HTMLInputElement>();
+  let fromInput = $state<HTMLInputElement>();
   let searching = $state(false);
   let lastQuery = "";
 
@@ -152,9 +154,16 @@
       .sort((a, b) => Number(b.is_head) - Number(a.is_head) || a.name.localeCompare(b.name)),
   );
 
-  export function focusSearch() {
-    searchInput?.focus();
-    searchInput?.select();
+  /** 不指定方式时：正在按日期搜就换回按说明搜 */
+  export async function focusSearch(kind?: SearchKind) {
+    if (!tab) return;
+    setKind(kind ?? (tab.search.kind === "date" ? "text" : tab.search.kind));
+    await tick();
+    if (tab.search.kind === "date") fromInput?.focus();
+    else {
+      searchInput?.focus();
+      searchInput?.select();
+    }
   }
 
   function below(e: MouseEvent) {
@@ -186,9 +195,63 @@
     if (r) await tab.run({ op: "stash_push", message: r.input || null }, t("正在 stash…"));
   }
 
+  const KINDS: { kind: SearchKind; short: string; label: string }[] = [
+    { kind: "text", short: t("说明"), label: t("提交说明、作者、哈希") },
+    { kind: "path", short: t("路径"), label: t("改过的文件路径") },
+    { kind: "code", short: t("代码"), label: t("改动的代码内容") },
+    { kind: "date", short: t("日期"), label: t("提交日期范围") },
+  ];
+  const kindInfo = $derived(KINDS.find((k) => k.kind === tab?.search.kind) ?? KINDS[0]);
+  const placeholder = $derived.by(() => {
+    const key = isMac ? "⌘F" : "Ctrl+F";
+    if (kindInfo.kind === "path") return t("搜索改过的文件，如 {0}", "src/app");
+    if (kindInfo.kind === "code") return t("搜索改动里的代码 ({0})", key);
+    return t("搜索提交说明、作者、哈希 ({0}F)", isMac ? "⌘" : "Ctrl+");
+  });
+
+  function showKindMenu(e: MouseEvent) {
+    if (!tab) return;
+    const tb = tab;
+    flowMenu = {
+      ...below(e),
+      items: KINDS.map((k) => ({
+        label: (k.kind === tb.search.kind ? "✓ " : "　 ") + k.label,
+        action: () => focusSearch(k.kind),
+      })),
+    };
+  }
+
+  function setKind(kind: SearchKind) {
+    if (!tab || tab.search.kind === kind) return;
+    tab.search.kind = kind;
+    tab.search.hits = [];
+    lastQuery = "";
+    if (kind === "date") {
+      if (tab.search.from || tab.search.to) doSearch();
+      return;
+    }
+    // 换了方式后用输入框里已有的文字重新搜
+    if (tab.search.query.trim()) doSearch();
+  }
+
+  /** 本地日期 → 秒；end 为真时取这一天的最后一秒 */
+  function daySec(d: string, end: boolean) {
+    if (!d) return "";
+    const [y, m, day] = d.split("-").map(Number);
+    return String(Math.floor(new Date(y, m - 1, day + (end ? 1 : 0)).getTime() / 1000) - (end ? 1 : 0));
+  }
+
+  /** 发给后台的搜索内容 */
+  function queryOf(tb: RepoTab) {
+    const s = tb.search;
+    if (s.kind !== "date") return s.query.trim();
+    return s.from || s.to ? `${daySec(s.from, false)}..${daySec(s.to, true)}` : "";
+  }
+
   async function doSearch() {
     if (!tab) return;
-    const q = tab.search.query.trim();
+    const kind = tab.search.kind;
+    const q = queryOf(tab);
     lastQuery = q;
     if (!q) {
       tab.search.hits = [];
@@ -196,7 +259,7 @@
     }
     searching = true;
     try {
-      const hits = await api.search(tab.id, q);
+      const hits = await api.search(tab.id, q, kind);
       tab.search.hits = hits;
       tab.search.index = 0;
       if (hits.length === 0) toast(t("没有找到匹配的提交"));
@@ -225,11 +288,12 @@
     if (e.key === "Enter") {
       e.preventDefault();
       // 已经有结果时回车跳到下一个，Shift+回车跳到上一个
-      if (tab.search.query.trim() === lastQuery && tab.search.hits.length) gotoHit(tab.search.index + (e.shiftKey ? -1 : 1));
+      if (queryOf(tab) === lastQuery && tab.search.hits.length) gotoHit(tab.search.index + (e.shiftKey ? -1 : 1));
       else doSearch();
     }
     if (e.key === "Escape") {
       tab.search.query = "";
+      tab.search.from = tab.search.to = "";
       tab.search.hits = [];
       lastQuery = "";
       searchInput?.blur();
@@ -331,14 +395,15 @@
       <button class="tb" class:on={tab.logOpen} onclick={() => (tab.logOpen = !tab.logOpen)} title={t("查看 git 命令和输出日志")}>
         <span class="ico">≡</span><span class="lbl">{t("日志")}</span>
       </button>
-      <div class="search">
-        <span class="sico">⌕</span>
-        <input
-          bind:this={searchInput}
-          bind:value={tab.search.query}
-          placeholder={t("搜索提交说明、作者、哈希 ({0}F)", isMac ? "⌘" : "Ctrl+")}
-          onkeydown={searchKey}
-        />
+      <div class="search" class:wide={tab.search.kind === "date"}>
+        <button class="kind" onclick={showKindMenu} title={t("搜索方式：{0}", kindInfo.label)}>⌕ {kindInfo.short}<span class="caret">▾</span></button>
+        {#if tab.search.kind === "date"}
+          <input class="day" type="date" bind:this={fromInput} bind:value={tab.search.from} max={tab.search.to || undefined} onchange={doSearch} onkeydown={searchKey} title={t("从这天起")} />
+          <span class="dash">–</span>
+          <input class="day" type="date" bind:value={tab.search.to} min={tab.search.from || undefined} onchange={doSearch} onkeydown={searchKey} title={t("到这天为止")} />
+        {:else}
+          <input bind:this={searchInput} bind:value={tab.search.query} {placeholder} onkeydown={searchKey} />
+        {/if}
         {#if searching}
           <span class="hits">{t("搜索中…")}</span>
         {:else if tab.search.hits.length}
@@ -606,19 +671,35 @@
     gap: 4px;
     position: relative;
     flex: 0 1 260px;
-    min-width: 120px;
+    min-width: 150px;
   }
-  .sico {
-    position: absolute;
-    left: 9px;
+  .search.wide {
+    flex-basis: 330px;
+  }
+  .kind {
+    flex-shrink: 0;
+    height: 26px;
+    padding: 0 6px;
+    color: var(--text-dim);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .caret {
+    margin-left: 2px;
+    font-size: 9px;
     color: var(--text-faint);
-    pointer-events: none;
   }
   .search input {
     flex: 1;
     width: 0;
     min-width: 0;
-    padding-left: 26px;
+  }
+  .search input.day {
+    padding: 0 4px;
+    font-size: 12px;
+  }
+  .dash {
+    color: var(--text-faint);
   }
   .hits {
     font-size: 12px;

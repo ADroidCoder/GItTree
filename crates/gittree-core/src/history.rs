@@ -145,3 +145,49 @@ pub fn blame(dir: &Path, path: &str, rev: Option<&str>) -> Result<Blame, Error> 
     }
     Ok(Blame { commits, lines, line_commit })
 }
+
+/// 按什么搜提交
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchKind {
+    /// 改动过路径里含这段文字的文件（不分大小写）
+    Path,
+    /// 改动的行里含这段文字（不分大小写）
+    Code,
+}
+
+/// 用 git log 搜所有分支上的提交，返回提交哈希，最新的在前
+pub fn search_commits(dir: &Path, kind: SearchKind, query: &str, limit: usize) -> Result<Vec<String>, Error> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(Vec::new());
+    }
+    let n = limit.to_string();
+    let mut args = vec!["log", "--all", "--format=%H", "-n", &n];
+    let (pick, file, dir_spec);
+    match kind {
+        SearchKind::Code => {
+            pick = format!("-G{}", regex_escape(q));
+            args.extend(["-i", &pick]);
+        }
+        SearchKind::Path => {
+            // 文件名或某一级目录名里含这段文字都算
+            file = format!(":(glob,icase)**/*{q}*");
+            dir_spec = format!(":(glob,icase)**/*{q}*/**");
+            args.extend(["--", &file, &dir_spec]);
+        }
+    }
+    let out = git(dir, &args)?;
+    Ok(out.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect())
+}
+
+/// 把文字转成只匹配它本身的正则（git -G 用的是扩展正则）
+fn regex_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if "\\.^$|?*+()[]{}".contains(c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}

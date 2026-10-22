@@ -1,6 +1,6 @@
 //! Reflog、.gitignore、工作树、子模块、二分查错、签名、图片差异、PR 检出
 
-use gittree_core::{bisect, diff, ops, reflog, submodule, worktree};
+use gittree_core::{bisect, diff, history, ops, reflog, submodule, worktree};
 use std::path::{Path, PathBuf};
 
 fn temp_repo(name: &str) -> PathBuf {
@@ -347,4 +347,28 @@ fn cherry_pick_and_revert_many() {
     ops::revert(&dir, &picked).unwrap();
     assert!(!dir.join("b.txt").exists() && !dir.join("c.txt").exists());
     assert_eq!(log().lines().count(), 5);
+}
+
+#[test]
+fn search_commits_by_path_and_code() {
+    use history::SearchKind::{Code, Path as ByPath};
+    let dir = temp_repo("search");
+    std::fs::create_dir_all(dir.join("src/Components")).unwrap();
+    let a = commit_file(&dir, "src/Components/Toolbar.svelte", "let x = 1;\n", "工具栏");
+    let b = commit_file(&dir, "README.md", "fn parse_args(a: [u8]) {}\n", "说明");
+    ops::git(&dir, &["checkout", "-q", "-b", "other"]).unwrap();
+    let c = commit_file(&dir, "src/Components/Toolbar.svelte", "let x = 2;\n", "改工具栏");
+    ops::git(&dir, &["checkout", "-q", "main"]).unwrap();
+
+    // 文件名、目录名都能搜到，不分大小写，其他分支上的也算
+    assert_eq!(history::search_commits(&dir, ByPath, "toolbar", 100).unwrap(), vec![c.clone(), a.clone()]);
+    assert_eq!(history::search_commits(&dir, ByPath, "components", 100).unwrap(), vec![c.clone(), a.clone()]);
+    assert_eq!(history::search_commits(&dir, ByPath, "readme", 100).unwrap(), vec![b.clone()]);
+    assert!(history::search_commits(&dir, ByPath, "nothing", 100).unwrap().is_empty());
+
+    // 改动内容按原文匹配，正则符号不起作用
+    assert_eq!(history::search_commits(&dir, Code, "PARSE_ARGS(a: [u8])", 100).unwrap(), vec![b]);
+    assert_eq!(history::search_commits(&dir, Code, "x = 2", 100).unwrap(), vec![c.clone()]);
+    assert_eq!(history::search_commits(&dir, Code, "let x", 100).unwrap(), vec![c, a]);
+    assert!(history::search_commits(&dir, Code, "x = .", 100).unwrap().is_empty());
 }

@@ -179,6 +179,14 @@
     return out;
   });
 
+  /** 并排视图每半边的最小宽度（字符数）：按最长的一行算，长行才能横向滚动看到 */
+  const splitCols = $derived.by(() => {
+    if (!split || !diff) return 0;
+    let max = 0;
+    for (const h of diff.hunks) for (const l of h.lines) max = Math.max(max, textCols(l.text));
+    return max;
+  });
+
   const start = $derived(Math.max(0, Math.floor(scrollTop / LINE_H) - 20));
   const end = $derived(Math.min(items.length, Math.ceil((scrollTop + viewH) / LINE_H) + 20));
   const stats = $derived.by(() => {
@@ -218,6 +226,16 @@
     // 有选中的行时 Esc 先取消选择
     if (sel) sel = null;
     else onClose();
+  }
+
+  /** 一行代码占几列：制表符按 8 列对齐，中文等全角字符占两列 */
+  function textCols(s: string) {
+    let n = 0;
+    for (const ch of s) {
+      if (ch === "\t") n += 8 - (n % 8);
+      else n += /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]|[\u{1f300}-\u{1faff}\u{20000}-\u{3fffd}]/u.test(ch) ? 2 : 1;
+    }
+    return n;
   }
 </script>
 
@@ -278,7 +296,11 @@
       bind:clientHeight={viewH}
       onscroll={() => (scrollTop = scroller!.scrollTop)}
     >
-      <div class="spacer" class:split style="height:{items.length * LINE_H + (diff.truncated ? 40 : 0)}px">
+      <div
+        class="spacer"
+        class:split
+        style="height:{items.length * LINE_H + (diff.truncated ? 40 : 0)}px;--half:calc({splitCols}ch + 80px)"
+      >
         <div class="lines" style="transform: translateY({start * LINE_H}px)">
           {#each items.slice(start, end) as it, k (start + k)}
             {#if it.t === "hunk"}
@@ -511,7 +533,7 @@
     width: 100%;
   }
   .spacer.split {
-    width: 100%;
+    width: calc(var(--half) * 2);
   }
   .half {
     display: flex;

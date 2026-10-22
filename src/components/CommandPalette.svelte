@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FlowKind } from "../lib/api";
+  import type { FlowKind, SearchKind } from "../lib/api";
   import { bestScore } from "../lib/fuzzy";
   import { lang, setLang, t } from "../lib/i18n";
   import { PRESETS, setTheme, themes } from "../lib/themes.svelte";
@@ -12,7 +12,7 @@
     onOpenFolder,
     onClose,
   }: {
-    toolbar: { newBranch: () => void; stash: () => void; focusSearch: () => void } | undefined;
+    toolbar: { newBranch: () => void; stash: () => void; focusSearch: (kind?: SearchKind) => void } | undefined;
     onOpenFolder: () => void;
     onClose: () => void;
   } = $props();
@@ -50,6 +50,9 @@
         { group: g, label: t("刷新"), hint: `${mod}R`, keys: "shuaxin sx refresh reload", run: () => tb.refresh() },
         { group: g, label: t("对比分支…"), keys: "duibi db compare diff branch", run: () => tb.openCompare(repo.head.branch ?? "HEAD", "") },
         { group: g, label: t("搜索提交"), hint: `${mod}F`, keys: "sousuo ss search find commit", run: () => toolbar?.focusSearch() },
+        { group: g, label: t("按文件路径搜索提交"), keys: "lujing lj wenjian path file search", run: () => toolbar?.focusSearch("path") },
+        { group: g, label: t("按代码内容搜索提交"), keys: "daima dm neirong code content search pickaxe", run: () => toolbar?.focusSearch("code") },
+        { group: g, label: t("按日期搜索提交"), keys: "riqi rq shijian date time search", run: () => toolbar?.focusSearch("date") },
         {
           group: g,
           label: tb.focus.length ? t("显示全部分支") : t("只看当前分支"),

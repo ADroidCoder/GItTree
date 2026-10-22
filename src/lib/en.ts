@@ -1094,6 +1094,23 @@ const en: Record<string, string> = {
   "合并分支 feature/export": "Merge branch feature/export",
   搜索: "Search",
   "主题：{0}": "Theme: {0}",
+  // 搜提交的方式
+  说明: "Message",
+  路径: "Path",
+  代码: "Code",
+  日期: "Date",
+  "提交说明、作者、哈希": "Message, author, hash",
+  改过的文件路径: "Changed file path",
+  改动的代码内容: "Changed code",
+  提交日期范围: "Date range",
+  "搜索改过的文件，如 {0}": "Search changed files, e.g. {0}",
+  "搜索改动里的代码 ({0})": "Search changed code ({0})",
+  "搜索方式：{0}": "Search by: {0}",
+  从这天起: "From",
+  到这天为止: "To",
+  按文件路径搜索提交: "Search commits by file path",
+  按代码内容搜索提交: "Search commits by code",
+  按日期搜索提交: "Search commits by date",
 };
 
 export default en;

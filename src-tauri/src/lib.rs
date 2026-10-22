@@ -333,9 +333,32 @@ async fn get_rows(state: State<'_, AppState>, repo: String, start: u32, end: u32
     .await
 }
 
+/// 搜提交。kind：text 说明/作者/哈希，path 文件路径，code 改动内容，date 日期（query 是「起..止」的秒数，可留空一端）
 #[tauri::command]
-async fn search(state: State<'_, AppState>, repo: String, query: String) -> CmdResult<Vec<u32>> {
+async fn search(state: State<'_, AppState>, repo: String, query: String, kind: Option<String>) -> CmdResult<Vec<u32>> {
     let session = state.get(&repo).map_err(|e| e.to_string())?;
+    let git_kind = match kind.as_deref() {
+        Some("path") => Some(history::SearchKind::Path),
+        Some("code") => Some(history::SearchKind::Code),
+        _ => None,
+    };
+    if let Some(k) = git_kind {
+        let (dir, _) = dirs_of(&state, &repo)?;
+        return blocking(move || {
+            let oids = history::search_commits(&dir, k, &query, 5000)?;
+            let s = lock(&session)?;
+            // 只留下提交图里有的（筛选了分支时其他的不显示），按行号排好方便上下跳
+            let mut rows: Vec<u32> = oids
+                .iter()
+                .filter_map(|o| ObjectId::from_hex(o.as_bytes()).ok())
+                .filter_map(|id| s.log.row_of.get(&id).copied())
+                .collect();
+            rows.sort_unstable();
+            Ok(rows)
+        })
+        .await;
+    }
+    let by_date = kind.as_deref() == Some("date");
     blocking(move || {
         // 后台还没读完说明时，先把剩下的读完再搜（读的时候不占着锁）
         let job = {
@@ -346,7 +369,12 @@ async fn search(state: State<'_, AppState>, repo: String, query: String) -> CmdR
             let metas = log::read_meta_parallel(&repo, &oids, &rows);
             lock(&session)?.log.install_meta(metas);
         }
-        Ok(lock(&session)?.log.search(&query, 5000))
+        let s = lock(&session)?;
+        if by_date {
+            let (from, to) = query.split_once("..").unwrap_or((&query, ""));
+            return Ok(s.log.search_time(from.trim().parse().ok(), to.trim().parse().ok(), 5000));
+        }
+        Ok(s.log.search(&query, 5000))
     })
     .await
 }

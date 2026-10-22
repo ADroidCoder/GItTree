@@ -429,7 +429,8 @@ export const api = {
   refreshRepo: (repo: string) => invoke<RepoInfo>("refresh_repo", { repo }),
   setFocus: (repo: string, refs: string[]) => invoke<RepoInfo>("set_focus", { repo, refs }),
   getRows: (repo: string, start: number, end: number) => invoke<RowsOut>("get_rows", { repo, start, end }),
-  search: (repo: string, query: string) => invoke<number[]>("search", { repo, query }),
+  /** 日期搜索时 query 是「起..止」的秒数，可以只填一端 */
+  search: (repo: string, query: string, kind: SearchKind = "text") => invoke<number[]>("search", { repo, query, kind }),
   rowOf: (repo: string, oid: string) => invoke<number | null>("row_of", { repo, oid }),
   commitDetails: (repo: string, oid: string) => invoke<CommitDetails>("commit_details", { repo, oid }),
   commitFileDiff: (repo: string, oid: string, path: string, oldPath: string | null) =>
@@ -506,3 +507,6 @@ export interface AskPassRequest {
 
 /** 合并方式 */
 export type MergeMode = "auto" | "no_ff" | "ff_only" | "squash";
+
+/** 搜提交的方式：说明/作者/哈希、改过的文件路径、改动的代码、日期 */
+export type SearchKind = "text" | "path" | "code" | "date";

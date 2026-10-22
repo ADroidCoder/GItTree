@@ -3,7 +3,7 @@ import { isMac, shareUrl, webUrl } from "./util";
 import { prefs } from "./prefs";
 import { autoArchive, loadTasks, saveTasks, type Board } from "./board";
 import { notifyInBackground, notifySettings } from "./notify.svelte";
-import { api, type AskPassRequest, type BisectState, type MergeMode, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type Remote, type RepoExtras, type RepoInfo, type Row, type Stash, type Status } from "./api";
+import { api, type AskPassRequest, type BisectState, type MergeMode, type FileDiff, type FlowConfig, type FlowKind, type Op, type OpenTarget, type ProgressEvent, type RefInfo, type Remote, type RepoExtras, type RepoInfo, type Row, type SearchKind, type Stash, type Status } from "./api";
 
 export interface DiffTarget {
   /** commit：某个提交里的文件；workdir：工作区文件；conflict：解决冲突；compare：两个提交之间 */
@@ -196,7 +196,7 @@ export class RepoTab {
   graphVersion = $state(0);
   /** 让提交图滚动到某一行 */
   scrollRequest = $state<{ row: number; seq: number } | null>(null);
-  search = $state({ query: "", hits: [] as number[], index: 0 });
+  search = $state({ query: "", hits: [] as number[], index: 0, kind: "text" as SearchKind, from: "", to: "" });
   /** 右侧面板正在查看的 stash */
   selectedStash = $state<Stash | null>(null);
   /** Git Flow 配置（没初始化时是推荐的默认值） */
