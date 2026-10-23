@@ -3,7 +3,7 @@
   import { bestScore } from "../lib/fuzzy";
   import { lang, setLang, t } from "../lib/i18n";
   import { PRESETS, setTheme, themes } from "../lib/themes.svelte";
-  import { activate, activeTab, addRemote, addSubmodule, addWorktree, app, closeTab, copyRemoteUrl, createPull, forcePush, openRemoteWeb, openFlow, openIn, openRepo, openSettings, recentRepos, showTasks, startBisect, trackWithLfs } from "../lib/store.svelte";
+  import { activate, activeTab, addRemote, addSubmodule, addWorktree, app, applyPatchFiles, applyPatchText, closeTab, copyRemoteUrl, createPull, deepenHistory, forcePush, openRemoteWeb, openFlow, openIn, openRepo, openSettings, recentRepos, showTasks, startBisect, trackWithLfs } from "../lib/store.svelte";
   import { checkUpdate } from "../lib/updater.svelte";
   import { shareUrl } from "../lib/util";
 
@@ -103,6 +103,15 @@
         tb.bisect?.active
           ? { group: g, label: t("结束二分查错"), keys: "erfen chacuo efcc bisect reset", run: () => tb.run({ op: "bisect_reset" }, t("正在结束二分查错…")) }
           : { group: g, label: t("开始二分查错…"), keys: "erfen chacuo efcc bisect start bug", run: () => startBisect(tb) },
+        { group: g, label: t("应用补丁文件…"), keys: "yingyong buding yybd apply patch am diff", run: () => applyPatchFiles(tb) },
+        { group: g, label: t("粘贴补丁内容应用…"), keys: "zhantie buding ztbd paste apply patch", run: () => applyPatchText(tb) },
+        ...(tb.extras?.partial.shallow
+          ? [
+              { group: g, label: t("浅克隆：再下载更早的 {0} 个提交", 100), keys: "qian kelong lishi qkl deepen shallow history", run: () => deepenHistory(tb, 100) },
+              { group: g, label: t("浅克隆：下载全部历史"), keys: "qian kelong quanbu lishi qkl unshallow full history", run: () => deepenHistory(tb, null) },
+            ]
+          : []),
+        { group: g, label: t("部分检出：选择要检出的目录…"), keys: "bufen jianchu mulu bfjc sparse checkout", run: () => (app.sparseDialog = tb) },
         ...(tb.extras?.lfs.installed
           ? [
               { group: g, label: t("Git LFS：拉取大文件"), keys: "lfs dawenjian dwj pull large", run: () => tb.run({ op: "lfs_pull" }, t("正在拉取 LFS 文件…")) },

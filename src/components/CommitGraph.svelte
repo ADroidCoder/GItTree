@@ -2,7 +2,7 @@
   import { t } from "../lib/i18n";
   import { onMount, untrack } from "svelte";
   import { api, type Edge, type RefInfo, type Row } from "../lib/api";
-  import { drag as refDrag, type RepoTab } from "../lib/store.svelte";
+  import { deepenHistory, drag as refDrag, type RepoTab } from "../lib/store.svelte";
   import { themes } from "../lib/themes.svelte";
   import { formatDate, initials, laneColor, relativeTime } from "../lib/util";
 
@@ -493,6 +493,13 @@
           <button class="focus-clear" onclick={() => tab.setFocus([])}>{t("显示全部")}</button>
         </span>
       {/if}
+      {#if tab.extras?.partial.shallow}
+        <span class="focus-info" title={t("这是浅克隆的仓库，更早的提交还没有下载")}>
+          {t("浅克隆：只有最近的历史")}
+          <button class="focus-clear" disabled={!!tab.busy} onclick={() => deepenHistory(tab, 100)}>{t("再下载 {0} 个", 100)}</button>
+          <button class="focus-clear" disabled={!!tab.busy} onclick={() => deepenHistory(tab, null)}>{t("全部")}</button>
+        </span>
+      {/if}
     </div>
     {#if cols.author}<div class="h-author">{t("作者")}</div>{/if}
     <div class="h-date">{t("时间")}</div>
@@ -510,7 +517,7 @@
             <div class="c-msg">
               <span class="wip-label">{t("// 未提交的更改")}</span>
               <span class="wip-count">{t("{0} 个文件", tab.changeCount)}</span>
-              {#if tab.status?.in_progress}<span class="wip-state">{t("{0} 进行中", tab.status.in_progress)}</span>{/if}
+              {#if tab.status?.in_progress}<span class="wip-state">{t("{0} 进行中", tab.status.in_progress === "am" ? t("应用补丁") : tab.status.in_progress)}</span>{/if}
             </div>
           </div>
         {:else}

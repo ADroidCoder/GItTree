@@ -6,7 +6,7 @@ use gittree_core::tr;
 use gittree_core::gix::{self, ObjectId};
 use gittree_core::log::{self, Error, HeadInfo, Log, RefInfo, Timings};
 use gittree_core::flow::{self, FinishOptions, FlowConfig};
-use gittree_core::{bisect, conflict, diff, git2, history, identity, lfs, ops, rebase, reflog, submodule, undo, worktree};
+use gittree_core::{bisect, conflict, diff, git2, history, identity, lfs, ops, patch, rebase, reflog, sparse, submodule, undo, worktree};
 use notify::{RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -345,6 +345,13 @@ async fn search(state: State<'_, AppState>, repo: String, query: String, kind: O
     if let Some(k) = git_kind {
         let (dir, _) = dirs_of(&state, &repo)?;
         return blocking(move || {
+            if matches!(k, history::SearchKind::Code) && sparse::is_lazy(&dir) {
+                return Err(tr!(
+                    "这个仓库是部分检出克隆的，文件内容没有全部下载，不能按代码内容搜索",
+                    "This repository was cloned with sparse checkout and file contents aren't all downloaded, so it can't be searched by code"
+                )
+                .into());
+            }
             let oids = history::search_commits(&dir, k, &query, 5000)?;
             let s = lock(&session)?;
             // 只留下提交图里有的（筛选了分支时其他的不显示），按行号排好方便上下跳
@@ -395,10 +402,22 @@ fn dirs_of(state: &AppState, repo: &str) -> CmdResult<(PathBuf, PathBuf)> {
     Ok((s.workdir.clone(), s.git_dir.clone()))
 }
 
+/// 文件内容按需下载的仓库（部分检出克隆的）：读差异前先让 git 把要用的文件下载下来。
+/// 下载失败（比如没联网）时照样读，只是差异里看不到内容
+fn fetch_lazy(dir: &Path, commit: &str, range: Option<(&str, bool)>) {
+    if sparse::is_lazy(dir) {
+        let _ = sparse::prefetch(dir, commit, range);
+    }
+}
+
 #[tauri::command]
 async fn commit_details(state: State<'_, AppState>, repo: String, oid: String) -> CmdResult<diff::CommitDetails> {
     let (dir, _) = dirs_of(&state, &repo)?;
-    blocking(move || diff::commit_details(&git2::Repository::open(dir)?, &oid)).await
+    blocking(move || {
+        fetch_lazy(&dir, &oid, None);
+        diff::commit_details(&git2::Repository::open(dir)?, &oid)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -410,14 +429,22 @@ async fn commit_file_diff(
     old_path: Option<String>,
 ) -> CmdResult<Option<diff::FileDiff>> {
     let (dir, _) = dirs_of(&state, &repo)?;
-    blocking(move || diff::commit_file_diff(&git2::Repository::open(dir)?, &oid, &path, old_path.as_deref())).await
+    blocking(move || {
+        fetch_lazy(&dir, &oid, None);
+        diff::commit_file_diff(&git2::Repository::open(dir)?, &oid, &path, old_path.as_deref())
+    })
+    .await
 }
 
 /// 对比两个版本（分支名、标签名或提交号）
 #[tauri::command]
 async fn compare(state: State<'_, AppState>, repo: String, from: String, to: String, three_dot: bool) -> CmdResult<diff::Compare> {
     let (dir, _) = dirs_of(&state, &repo)?;
-    blocking(move || diff::compare(&git2::Repository::open(dir)?, &from, &to, three_dot)).await
+    blocking(move || {
+        fetch_lazy(&dir, &from, Some((&to, three_dot)));
+        diff::compare(&git2::Repository::open(dir)?, &from, &to, three_dot)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -430,7 +457,11 @@ async fn compare_file_diff(
     old_path: Option<String>,
 ) -> CmdResult<Option<diff::FileDiff>> {
     let (dir, _) = dirs_of(&state, &repo)?;
-    blocking(move || diff::compare_file_diff(&git2::Repository::open(dir)?, &from, &to, &path, old_path.as_deref())).await
+    blocking(move || {
+        fetch_lazy(&dir, &from, Some((&to, false)));
+        diff::compare_file_diff(&git2::Repository::open(dir)?, &from, &to, &path, old_path.as_deref())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -565,6 +596,18 @@ enum Op {
     ClearLocalIdentity,
     /// 把 PR 的代码拉到本地分支 local 并切换过去
     CheckoutPull { remote: String, remote_ref: String, local: String, number: u64 },
+    /// 应用补丁文件，或者粘贴进来的补丁内容
+    ApplyPatch {
+        #[serde(default)]
+        files: Vec<String>,
+        #[serde(default)]
+        text: Option<String>,
+    },
+    /// 浅克隆往前多下载 more 个提交，为空时下载全部历史
+    Deepen { more: Option<u32> },
+    /// 部分检出：只检出这些目录
+    SparseSet { dirs: Vec<String> },
+    SparseDisable,
 }
 
 /// 撤销记录里的提交说明：一个提交显示短哈希，多个显示个数
@@ -611,6 +654,7 @@ impl Op {
             Op::RebaseBranch { branch, onto } => (tr!("把 {branch} 变基到 {onto}", "rebase {branch} onto {onto}"), Keep),
             Op::RebaseInteractive { steps, .. } => (tr!("交互式变基（{} 个提交）", "interactive rebase ({} commits)", steps.len()), Keep),
             Op::CheckoutPull { number, .. } => (tr!("检出 PR #{number}", "checkout PR #{number}"), Keep),
+            Op::ApplyPatch { .. } => (tr!("应用补丁", "apply patch"), Keep),
             _ => return None,
         })
     }
@@ -672,11 +716,16 @@ async fn git_op(app: AppHandle, state: State<'_, AppState>, repo: String, op: Op
     let result = blocking(move || {
         // 会移动分支的操作前后各拍一次快照，用来撤销
         let undoable = op.undo_label();
+        // 补历史不会移动任何分支，刷新时看不出变化，要强制重新加载
+        let reload = matches!(op, Op::Deepen { .. });
         let before = match &undoable {
             Some(_) => Some(undo::snapshot(&dir)?),
             None => None,
         };
         let out = ops::with_progress(p, || run_op(&dir, &git_dir, op))?;
+        if reload {
+            lock(&session)?.log.tips.clear();
+        }
         if let (Some((label, mode)), Some(before)) = (undoable, before)
             && let Some(entry) = undo::record(label, mode, before, undo::snapshot(&dir)?)
         {
@@ -695,11 +744,19 @@ async fn git_op(app: AppHandle, state: State<'_, AppState>, repo: String, op: Op
 
 /// 克隆仓库，进度事件的 repo 是 "clone"
 #[tauri::command]
-async fn clone_repo(app: AppHandle, state: State<'_, AppState>, url: String, parent: String, name: String) -> CmdResult<String> {
+async fn clone_repo(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+    parent: String,
+    name: String,
+    options: Option<ops::CloneOptions>,
+) -> CmdResult<String> {
     let progress = start_progress(app, &state, "clone");
     let p = progress.clone();
+    let opts = options.unwrap_or_default();
     let result = blocking(move || {
-        ops::with_progress(p, || ops::clone(Path::new(&parent), url.trim(), name.trim()))
+        ops::with_progress(p, || ops::clone(Path::new(&parent), url.trim(), name.trim(), &opts))
             .map(|d| d.to_string_lossy().into_owned())
     })
     .await;
@@ -759,6 +816,7 @@ struct RepoExtras {
     submodules: Vec<submodule::Submodule>,
     lfs: lfs::LfsInfo,
     identity: identity::Identity,
+    partial: sparse::PartialInfo,
 }
 
 #[tauri::command]
@@ -770,9 +828,28 @@ async fn repo_extras(state: State<'_, AppState>, repo: String) -> CmdResult<Repo
             submodules: submodule::list(&dir).unwrap_or_default(),
             lfs: lfs::info(&dir),
             identity: identity::current(&dir),
+            partial: sparse::info(&dir),
         })
     })
     .await
+}
+
+/// 把提交导出成补丁：out_dir 为空时返回补丁文本（用来复制），否则每个提交写成一个文件，返回文件路径
+#[tauri::command]
+async fn export_patches(state: State<'_, AppState>, repo: String, oids: Vec<String>, out_dir: Option<String>) -> CmdResult<Vec<String>> {
+    let (dir, _) = dirs_of(&state, &repo)?;
+    blocking(move || match out_dir {
+        Some(out) => patch::export_files(&dir, &oids, Path::new(&out)),
+        None => patch::export_text(&dir, &oids).map(|t| vec![t]),
+    })
+    .await
+}
+
+/// 选择部分检出的目录时，列出 parent 下的子目录
+#[tauri::command]
+async fn sparse_subdirs(state: State<'_, AppState>, repo: String, parent: String) -> CmdResult<Vec<String>> {
+    let (dir, _) = dirs_of(&state, &repo)?;
+    blocking(move || sparse::subdirs(&dir, &parent)).await
 }
 
 /// 二分查错的状态，只读文件，每次刷新都调用
@@ -1091,6 +1168,10 @@ fn run_op(dir: &Path, git_dir: &Path, op: Op) -> Result<String, Error> {
             Op::SetLocalIdentity { name, email } => done(identity::set_local(d, &name, &email)),
             Op::ClearLocalIdentity => done(identity::clear_local(d)),
             Op::CheckoutPull { remote, remote_ref, local, .. } => ops::checkout_pull(d, &remote, &remote_ref, &local),
+            Op::ApplyPatch { files, text } => patch::apply(d, &files, text.as_deref()),
+            Op::Deepen { more } => sparse::deepen(d, more),
+            Op::SparseSet { dirs } => sparse::set(d, &dirs),
+            Op::SparseDisable => sparse::disable(d),
             Op::WithStash { inner, pop } => {
                 let what = inner.undo_label().map(|(label, _)| label).unwrap_or_else(|| tr!("操作", "the operation"));
                 ops::with_stash(d, &what, pop, || run_op(d, git_dir, *inner))
@@ -1176,6 +1257,8 @@ pub fn run() {
             list_remotes,
             reflog,
             repo_extras,
+            export_patches,
+            sparse_subdirs,
             bisect_state,
             commit_signature,
             image_pair,

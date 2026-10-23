@@ -1,3 +1,4 @@
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { t } from "./i18n";
 import { isMac, shareUrl, webUrl } from "./util";
 import { prefs } from "./prefs";
@@ -63,7 +64,8 @@ export interface Toast {
 export interface DialogSpec {
   title: string;
   message?: string;
-  input?: { placeholder?: string; value: string; multiline?: boolean };
+  /** code：多行等宽，用来粘贴补丁这类内容 */
+  input?: { placeholder?: string; value: string; multiline?: boolean; code?: boolean };
   checkbox?: { label: string; value: boolean };
   /** 单选项；input.when 设置时，只在选中这些值时显示输入框 */
   choices?: { value: string; options: { value: string; label: string; hint?: string }[] };
@@ -86,7 +88,8 @@ export function errorText(e: unknown): string {
 let tabSeq = 0;
 
 /** 联网的操作，可能很慢，允许取消 */
-const NETWORK_OPS = new Set<string>(["fetch", "pull", "push", "flow_publish"]);
+// 部分检出的仓库改检出目录时要下载文件内容
+const NETWORK_OPS = new Set<string>(["fetch", "pull", "push", "flow_publish", "deepen", "sparse_set", "sparse_disable"]);
 
 /** 修改远程仓库配置的操作，完成后重新读取远程列表 */
 const REMOTE_OPS = new Set<string>(["add_remote", "remove_remote", "rename_remote", "set_remote_url"]);
@@ -670,6 +673,8 @@ export const app = $state({
   dialog: null as DialogSpec | null,
   /** 提交身份设置对话框 */
   identityDialog: null as RepoTab | null,
+  /** 选择部分检出的目录 */
+  sparseDialog: null as RepoTab | null,
   /** 设置窗口打开时显示的分类 */
   settings: null as SettingsSection | null,
   flowDialog: null as FlowDialogSpec | null,
@@ -968,6 +973,66 @@ export async function trackWithLfs(tab: RepoTab, pattern: string | null) {
     confirmText: t("确定"),
   });
   if (d?.input.trim()) await tab.run({ op: "lfs_track", pattern: d.input.trim() });
+}
+
+// ---------- 补丁 ----------
+
+/** 复制提交的补丁文本（oids 从旧到新），可以直接粘贴给别人 */
+export async function copyPatch(tab: RepoTab, oids: string[]) {
+  try {
+    const [text] = await api.exportPatches(tab.id, oids, null);
+    await navigator.clipboard.writeText(text);
+    toast(oids.length === 1 ? t("补丁已复制到剪贴板") : t("{0} 个提交的补丁已复制到剪贴板", oids.length));
+  } catch (e) {
+    toast(errorText(e), "error");
+  }
+}
+
+/** 每个提交导出成一个 .patch 文件，放到选的文件夹里（oids 从旧到新） */
+export async function exportPatches(tab: RepoTab, oids: string[]) {
+  const dir = await openFileDialog({ directory: true, title: t("补丁保存到哪个文件夹") });
+  if (typeof dir !== "string") return;
+  try {
+    const files = await api.exportPatches(tab.id, oids, dir);
+    toast(files.length === 1 ? t("已导出：{0}", files[0]) : t("已导出 {0} 个补丁到 {1}", files.length, dir));
+  } catch (e) {
+    toast(errorText(e), "error");
+  }
+}
+
+/** 选择补丁文件应用到当前分支 */
+export async function applyPatchFiles(tab: RepoTab) {
+  const picked = await openFileDialog({
+    multiple: true,
+    title: t("选择要应用的补丁"),
+    filters: [{ name: t("补丁"), extensions: ["patch", "diff", "eml", "mbox", "txt"] }],
+  });
+  const files = typeof picked === "string" ? [picked] : (picked ?? []);
+  if (!files.length) return;
+  // 多个文件按文件名排，format-patch 导出的 0001、0002 正好是提交顺序
+  files.sort();
+  await tab.run({ op: "apply_patch", files, text: null }, t("正在应用补丁…"));
+}
+
+/** 粘贴补丁内容应用到当前分支 */
+export async function applyPatchText(tab: RepoTab) {
+  const d = await dialog({
+    title: t("粘贴补丁"),
+    message: t("format-patch 导出的补丁会直接生成提交（保留原作者和说明）；git diff 的输出只把改动放到工作区。"),
+    input: { value: "", placeholder: "From 1a2b3c… / diff --git a/… b/…", multiline: true, code: true },
+    confirmText: t("应用"),
+  });
+  if (!d?.input.trim()) return;
+  // 粘贴时末尾的换行常常丢了，git apply 会认为补丁不完整
+  const text = d.input.endsWith("\n") ? d.input : d.input + "\n";
+  await tab.run({ op: "apply_patch", files: [], text }, t("正在应用补丁…"));
+}
+
+// ---------- 浅克隆、部分检出 ----------
+
+/** 浅克隆往前多下载 more 个提交；null 下载全部历史 */
+export function deepenHistory(tab: RepoTab, more: number | null) {
+  return tab.run({ op: "deepen", more }, more ? t("正在下载更早的 {0} 个提交…", more) : t("正在下载全部历史…"));
 }
 
 /** 把未跟踪的文件加入 .gitignore */

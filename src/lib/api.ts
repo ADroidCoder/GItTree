@@ -170,6 +170,21 @@ export interface LfsInfo {
   patterns: string[];
 }
 
+/** 只下载了一部分的仓库 */
+export interface PartialInfo {
+  /** 浅克隆：更早的历史没有下载 */
+  shallow: boolean;
+  /** 文件内容用到时才下载 */
+  lazy: boolean;
+  /** 开了部分检出时检出的目录 */
+  sparse: string[] | null;
+}
+
+export interface CloneOptions {
+  depth: number | null;
+  sparse: string[] | null;
+}
+
 export interface Identity {
   name: string | null;
   email: string | null;
@@ -193,6 +208,7 @@ export interface RepoExtras {
   submodules: Submodule[];
   lfs: LfsInfo;
   identity: Identity;
+  partial: PartialInfo;
 }
 
 export interface BisectState {
@@ -317,7 +333,7 @@ export type Op =
   | { op: "delete_remote_tag"; remote: string; tag: string }
   | { op: "merge"; target: string; mode?: MergeMode; message?: string | null }
   | { op: "rebase"; onto: string }
-  | { op: "sequencer"; kind: string; action: "abort" | "continue" }
+  | { op: "sequencer"; kind: string; action: "abort" | "continue" | "skip" }
   | { op: "cherry_pick"; oids: string[] }
   | { op: "revert"; oids: string[] }
   | { op: "reset"; oid: string; mode: "soft" | "mixed" | "hard" }
@@ -354,7 +370,11 @@ export type Op =
   | { op: "lfs_untrack"; pattern: string }
   | { op: "set_local_identity"; name: string; email: string }
   | { op: "clear_local_identity" }
-  | { op: "checkout_pull"; remote: string; remote_ref: string; local: string; number: number };
+  | { op: "checkout_pull"; remote: string; remote_ref: string; local: string; number: number }
+  | { op: "apply_patch"; files: string[]; text: string | null }
+  | { op: "deepen"; more: number | null }
+  | { op: "sparse_set"; dirs: string[] }
+  | { op: "sparse_disable" };
 
 export interface PlanCommit {
   oid: string;
@@ -442,7 +462,7 @@ export const api = {
   lastCommitMessage: (repo: string) => invoke<string>("last_commit_message", { repo }),
   gitOp: (repo: string, op: Op) => invoke<string>("git_op", { repo, op }),
   cancelOp: (repo: string) => invoke<void>("cancel_op", { repo }),
-  cloneRepo: (url: string, parent: string, name: string) => invoke<string>("clone_repo", { url, parent, name }),
+  cloneRepo: (url: string, parent: string, name: string, options: CloneOptions) => invoke<string>("clone_repo", { url, parent, name, options }),
   initRepo: (path: string) => invoke<void>("init_repo", { path }),
   rebasePlan: (repo: string, from: string) => invoke<PlanCommit[]>("rebase_plan", { repo, from }),
   listRemotes: (repo: string) => invoke<Remote[]>("list_remotes", { repo }),
@@ -453,6 +473,9 @@ export const api = {
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),
   reflog: (repo: string, target: string | null) => invoke<(ReflogEntry & { row: number | null })[]>("reflog", { repo, target }),
   repoExtras: (repo: string) => invoke<RepoExtras>("repo_extras", { repo }),
+  /** outDir 为空时返回一段补丁文本，否则返回写出的文件 */
+  exportPatches: (repo: string, oids: string[], outDir: string | null) => invoke<string[]>("export_patches", { repo, oids, outDir }),
+  sparseSubdirs: (repo: string, parent: string) => invoke<string[]>("sparse_subdirs", { repo, parent }),
   bisectState: (repo: string) => invoke<BisectState>("bisect_state", { repo }),
   commitSignature: (repo: string, oid: string) => invoke<Signature | null>("commit_signature", { repo, oid }),
   imagePair: (

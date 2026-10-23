@@ -5,7 +5,7 @@
   import { shareUrl } from "../lib/util";
   import FocusPicker from "./FocusPicker.svelte";
   import { api, type SearchKind } from "../lib/api";
-  import { addRemote, addSubmodule, addWorktree, app, copyRemoteUrl, createPull, dialog, errorText, forcePush, openRemoteWeb, openFlow, openIn, openSettings, startBisect, toast, trackWithLfs, type RepoTab } from "../lib/store.svelte";
+  import { addRemote, addSubmodule, addWorktree, app, applyPatchFiles, applyPatchText, copyRemoteUrl, createPull, deepenHistory, dialog, errorText, forcePush, openRemoteWeb, openFlow, openIn, openSettings, startBisect, toast, trackWithLfs, type RepoTab } from "../lib/store.svelte";
   import { isMac } from "../lib/util";
   import RepoPicker from "./RepoPicker.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
@@ -129,6 +129,7 @@
     if (!tab) return;
     const tb = tab;
     const lfs = tb.extras?.lfs;
+    const partial = tb.extras?.partial;
     const email = tb.extras?.identity.email;
     const items: MenuItem[] = [
       { label: t("找回丢失的提交（Reflog）…"), action: () => tb.openTool("reflog") },
@@ -145,6 +146,21 @@
       tb.bisect?.active
         ? { label: t("结束二分查错"), action: () => tb.run({ op: "bisect_reset" }, t("正在结束二分查错…")) }
         : { label: t("开始二分查错…"), hint: "bisect", action: () => startBisect(tb) },
+      "sep",
+      { label: t("应用补丁文件…"), hint: "am / apply", action: () => applyPatchFiles(tb) },
+      { label: t("粘贴补丁内容应用…"), action: () => applyPatchText(tb) },
+      "sep",
+      ...(partial?.shallow
+        ? [
+            { label: t("浅克隆：再下载更早的 {0} 个提交", 100), action: () => deepenHistory(tb, 100) },
+            { label: t("浅克隆：下载全部历史"), hint: "--unshallow", action: () => deepenHistory(tb, null) },
+          ]
+        : []),
+      {
+        label: t("部分检出：选择要检出的目录…"),
+        hint: partial?.sparse ? t("已检出 {0} 个目录", partial.sparse.length) : "sparse-checkout",
+        action: () => (app.sparseDialog = tb),
+      },
       "sep",
     ];
     if (lfs?.used && !lfs.installed) {
@@ -416,7 +432,7 @@
         <span class="ico">⇶</span><span class="lbl">Git Flow</span>
         {#if curFlow}<span class="badge flow">{curFlow.kind}</span>{/if}
       </button>
-      <button class="tb" onclick={showToolsMenu} title={t("Reflog、PR、工作树、子模块、二分查错、LFS、提交身份")}>
+      <button class="tb" onclick={showToolsMenu} title={t("Reflog、PR、工作树、子模块、二分查错、补丁、部分检出、LFS、提交身份")}>
         <span class="ico">⋯</span><span class="lbl">{t("更多")}</span>
         {#if tab.bisect?.active}<span class="badge flow">bisect</span>{/if}
       </button>

@@ -274,14 +274,17 @@ pub struct Status {
     pub staged: Vec<StatusEntry>,
     pub unstaged: Vec<StatusEntry>,
     pub conflicted: Vec<StatusEntry>,
-    /// 正在进行的操作：merge、rebase、cherry-pick、revert
+    /// 正在进行的操作：merge、rebase、cherry-pick、revert、am（应用补丁）
     pub in_progress: Option<String>,
 }
 
 pub fn status(dir: &Path, git_dir: &Path) -> Result<Status, Error> {
     let out = git(dir, &["status", "--porcelain=v2", "-z", "--untracked-files=all", "--no-renames"])?;
     let mut st = parse_status(&out);
-    st.in_progress = if git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists() {
+    // git am 也用 rebase-apply 目录，多一个 applying 文件
+    st.in_progress = if git_dir.join("rebase-apply/applying").exists() {
+        Some("am".into())
+    } else if git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists() {
         Some("rebase".into())
     } else if git_dir.join("MERGE_HEAD").exists() {
         Some("merge".into())
@@ -666,7 +669,13 @@ pub fn rebase(dir: &Path, onto: &str) -> Result<String, Error> {
 
 /// 中止或继续正在进行的 merge / rebase / cherry-pick / revert
 pub fn sequencer(dir: &Path, op: &str, action: &str) -> Result<String, Error> {
-    if !matches!(op, "merge" | "rebase" | "cherry-pick" | "revert") || !matches!(action, "abort" | "continue") {
+    let ok = match op {
+        "merge" | "rebase" | "cherry-pick" | "revert" => matches!(action, "abort" | "continue"),
+        // 应用补丁时可以跳过对不上的这一个
+        "am" => matches!(action, "abort" | "continue" | "skip"),
+        _ => false,
+    };
+    if !ok {
         return Err(tr!("不支持的操作", "Unsupported operation").into());
     }
     let flag = format!("--{action}");
@@ -712,14 +721,37 @@ pub fn fetch(dir: &Path) -> Result<String, Error> {
     git(dir, &["fetch", "--all", "--prune", "--tags", "--progress"])
 }
 
+#[derive(Debug, Default, Deserialize)]
+pub struct CloneOptions {
+    /// 浅克隆：只下载每个分支最近的这么多个提交
+    #[serde(default)]
+    pub depth: Option<u32>,
+    /// 部分检出：只检出这些目录（空表示只有根目录下的文件），文件内容用到时才下载
+    #[serde(default)]
+    pub sparse: Option<Vec<String>>,
+}
+
 /// 克隆到 parent/name，返回仓库路径
-pub fn clone(parent: &Path, url: &str, name: &str) -> Result<std::path::PathBuf, Error> {
+pub fn clone(parent: &Path, url: &str, name: &str, opts: &CloneOptions) -> Result<std::path::PathBuf, Error> {
     let target = parent.join(name);
     if target.exists() && std::fs::read_dir(&target).map(|mut d| d.next().is_some()).unwrap_or(true) {
         return Err(tr!("{} 已经存在并且不是空文件夹", "{} already exists and isn't an empty folder", target.display()).into());
     }
     std::fs::create_dir_all(parent)?;
-    git(parent, &["clone", "--progress", url, name])?;
+    let depth = opts.depth.map(|d| d.max(1).to_string());
+    let mut args = vec!["clone", "--progress"];
+    if let Some(d) = &depth {
+        // --depth 默认只克隆一个分支，界面上要能看到所有分支
+        args.extend(["--depth", d, "--no-single-branch"]);
+    }
+    if opts.sparse.is_some() {
+        args.extend(["--filter=blob:none", "--sparse"]);
+    }
+    args.extend([url, name]);
+    git(parent, &args)?;
+    if let Some(dirs) = opts.sparse.as_ref().filter(|d| !d.is_empty()) {
+        crate::sparse::set(&target, dirs)?;
+    }
     Ok(target)
 }
 

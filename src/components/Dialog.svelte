@@ -35,7 +35,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="overlay" onkeydown={onKey}>
-  <div class="dialog" role="dialog" aria-modal="true">
+  <div class="dialog" class:wide={d.input?.code} role="dialog" aria-modal="true">
     <div class="title">{d.title}</div>
     {#if d.message}<div class="message">{d.message}</div>{/if}
     {#if d.choices}
@@ -53,7 +53,14 @@
     {/if}
     {#if d.input && showInput}
       {#if d.input.multiline}
-        <textarea bind:this={inputEl} bind:value={input} placeholder={d.input.placeholder} rows="4"></textarea>
+        <textarea
+          bind:this={inputEl}
+          bind:value={input}
+          class:code={d.input.code}
+          placeholder={d.input.placeholder}
+          rows={d.input.code ? 14 : 4}
+          spellcheck={d.input.code ? false : undefined}
+        ></textarea>
       {:else}
         <input bind:this={inputEl} bind:value={input} placeholder={d.input.placeholder} spellcheck="false" />
       {/if}
@@ -80,6 +87,15 @@
     justify-content: center;
     padding-top: 15vh;
     background: rgba(0, 0, 0, 0.45);
+  }
+  .dialog.wide {
+    width: 680px;
+  }
+  textarea.code {
+    font-family: var(--mono);
+    font-size: 12px;
+    white-space: pre;
+    overflow-wrap: normal;
   }
   .dialog {
     display: flex;

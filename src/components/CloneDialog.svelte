@@ -5,7 +5,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { api, type ProgressEvent } from "../lib/api";
-  import { app, elapsed, errorText, openRepo } from "../lib/store.svelte";
+  import { activeTab, app, elapsed, errorText, openRepo } from "../lib/store.svelte";
   import { prefs } from "../lib/prefs";
 
   // svelte-ignore state_referenced_locally
@@ -21,8 +21,12 @@
   let lines = $state<string[]>([]);
   let error = $state<string | null>(null);
   let urlInput = $state<HTMLInputElement>();
-
-
+  /** 大仓库：浅克隆、部分检出 */
+  let advanced = $state(false);
+  let shallow = $state(false);
+  let depth = $state(50);
+  let sparse = $state(false);
+  let sparseDirs = $state("");
 
   /** 从地址里取仓库名：https://gitee.com/a/b.git、git@github.com:a/b.git → b */
   function nameFromUrl(u: string) {
@@ -82,10 +86,17 @@
     lines = [];
     try {
       if (mode === "clone") {
-        const path = await api.cloneRepo(url, parent, name);
+        const dirs = sparseDirs.split(/[\s,，]+/).filter(Boolean);
+        const path = await api.cloneRepo(url, parent, name, {
+          depth: shallow ? Math.max(1, Math.floor(depth) || 1) : null,
+          sparse: sparse ? dirs : null,
+        });
         if (notifySettings.gitOps) notifyInBackground(t("克隆完成"), path);
         close();
         await openRepo(path);
+        // 部分检出时没填目录：打开后直接让用户勾选
+        const tab = activeTab();
+        if (sparse && !dirs.length && tab?.id === path) app.sparseDialog = tab;
       } else {
         await api.initRepo(target);
         close();
@@ -138,6 +149,31 @@
     {#if target}<div class="hint">{mode === "clone" ? t("将克隆到 {0}", target) : t("将创建到 {0}", target)}</div>{/if}
     {#if mode === "clone" && !running && !error}
       <div class="hint">{t("需要账号密码的 HTTPS 地址，请先在系统的 Git 凭据管理器里登录过，或者改用 SSH 地址。")}</div>
+    {/if}
+    {#if mode === "clone"}
+      <button class="adv-toggle" class:open={advanced} disabled={running} onclick={() => (advanced = !advanced)}>
+        <span class="arrow">▸</span>{t("大仓库选项")}
+        {#if !advanced && (shallow || sparse)}<span class="adv-on">{[shallow && t("浅克隆"), sparse && t("部分检出")].filter(Boolean).join(" · ")}</span>{/if}
+      </button>
+      {#if advanced}
+        <div class="adv">
+          <label class="opt">
+            <input type="checkbox" bind:checked={shallow} disabled={running} />
+            <span>{t("只下载最近的历史（浅克隆）：每个分支最近")}</span>
+            <input class="num" type="number" min="1" bind:value={depth} disabled={running || !shallow} />
+            <span>{t("个提交")}</span>
+          </label>
+          <div class="hint sub">{t("历史很长的仓库能快很多。以后可以在「更多」菜单里补下载更早的历史。")}</div>
+          <label class="opt">
+            <input type="checkbox" bind:checked={sparse} disabled={running} />
+            <span>{t("只检出部分目录（sparse-checkout）")}</span>
+          </label>
+          {#if sparse}
+            <input class="dirs" bind:value={sparseDirs} disabled={running} placeholder={t("要检出的目录，多个用空格分开，例如 src docs；留空则克隆后再选")} spellcheck="false" />
+          {/if}
+          <div class="hint sub">{t("其他目录不检出到硬盘，文件内容也是用到时才下载。以后可以在「更多」菜单里改选目录。")}</div>
+        </div>
+      {/if}
     {/if}
 
     {#if running || lines.length || error}
@@ -232,6 +268,54 @@
     color: var(--text-faint);
     font-size: 12px;
     word-break: break-all;
+  }
+  .adv-toggle {
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-dim);
+    font-size: 12.5px;
+  }
+  .adv-toggle .arrow {
+    font-size: 10px;
+    transition: transform 0.12s;
+  }
+  .adv-toggle.open .arrow {
+    transform: rotate(90deg);
+  }
+  .adv-on {
+    color: var(--accent);
+  }
+  .adv {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .opt {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .num {
+    width: 72px;
+    height: 24px;
+  }
+  .dirs {
+    margin-left: 22px;
+  }
+  .hint.sub {
+    margin: -2px 0 4px 22px;
+    word-break: normal;
   }
   .progress {
     display: flex;

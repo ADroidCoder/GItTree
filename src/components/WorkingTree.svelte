@@ -229,9 +229,12 @@
 <div class="wt">
   {#if st?.in_progress}
     <div class="progress">
-      <div>{t("正在进行")} <b>{st.in_progress}</b>{st.conflicted.length ? t("，还有 {0} 个冲突文件", st.conflicted.length) : ""}</div>
+      <div>{t("正在进行")} <b>{st.in_progress === "am" ? t("应用补丁") : st.in_progress}</b>{st.conflicted.length ? t("，还有 {0} 个冲突文件", st.conflicted.length) : ""}</div>
       <div class="pbtns">
         <button onclick={() => tab.run({ op: "sequencer", kind: st!.in_progress!, action: "continue" }, t("继续中…"))}>{t("继续")}</button>
+        {#if st.in_progress === "am"}
+          <button title={t("放弃这一个补丁，接着应用后面的")} onclick={() => tab.run({ op: "sequencer", kind: "am", action: "skip" }, t("跳过中…"))}>{t("跳过")}</button>
+        {/if}
         <button class="danger" onclick={() => tab.run({ op: "sequencer", kind: st!.in_progress!, action: "abort" }, t("中止中…"))}>{t("中止")}</button>
       </div>
     </div>

@@ -98,8 +98,8 @@ fn clone_and_merge_into() {
     let parent = std::env::temp_dir().join(format!("gittree-clone-parent-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&parent);
     let url = format!("file://{}", src.display());
-    let target = ops::clone(&parent, &url, "副本").unwrap();
+    let target = ops::clone(&parent, &url, "副本", &Default::default()).unwrap();
     assert!(target.join("b.txt").exists());
     // 目标不是空文件夹时拒绝
-    assert!(ops::clone(&parent, &url, "副本").is_err());
+    assert!(ops::clone(&parent, &url, "副本", &Default::default()).is_err());
 }

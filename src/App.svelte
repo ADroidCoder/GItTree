@@ -22,6 +22,7 @@
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import IdentityDialog from "./components/IdentityDialog.svelte";
+  import SparseDialog from "./components/SparseDialog.svelte";
   import { startNotifier } from "./lib/notify.svelte";
 
   let toolbar = $state<ReturnType<typeof Toolbar>>();
@@ -150,6 +151,9 @@
 {/if}
 {#if app.identityDialog}
   <IdentityDialog tab={app.identityDialog} />
+{/if}
+{#if app.sparseDialog}
+  <SparseDialog tab={app.sparseDialog} />
 {/if}
 {#if app.flowDialog}
   <FlowDialog />

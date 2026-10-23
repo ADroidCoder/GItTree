@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from "../lib/i18n";
   import type { RefInfo, Remote, Row, Stash } from "../lib/api";
-  import { addRemote, addSubmodule, addWorktree, app, confirm, copyRemoteUrl, createPull, dialog, errorText, mergeBranch, openFlow, openRemoteWeb, openRepo, toast, type RepoTab } from "../lib/store.svelte";
+  import { addRemote, addSubmodule, addWorktree, app, confirm, copyPatch, copyRemoteUrl, createPull, dialog, errorText, exportPatches, mergeBranch, openFlow, openRemoteWeb, openRepo, toast, type RepoTab } from "../lib/store.svelte";
   import { api, type Submodule, type Worktree } from "../lib/api";
   import { shareUrl } from "../lib/util";
   import Sidebar from "./Sidebar.svelte";
@@ -390,6 +390,9 @@
         { label: t("重置 {0} 到这里 - Mixed", current), action: reset("mixed") },
         { label: t("重置 {0} 到这里 - Hard", current), danger: true, action: reset("hard") },
         "sep",
+        { label: t("复制为补丁"), hint: "format-patch", action: () => copyPatch(tab, [row.oid]) },
+        { label: t("导出为补丁文件…"), action: () => exportPatches(tab, [row.oid]) },
+        "sep",
         { label: t("复制提交哈希"), hint: short, action: () => copy(row.oid) },
         { label: t("复制提交说明"), action: () => copy(row.summary) },
       ],
@@ -430,6 +433,9 @@
         hint: n !== 2 ? t("只能对比两个提交") : undefined,
         action: () => tab.openCompare(oldest[0], newest[0]),
       },
+      "sep",
+      { label: t("复制为补丁"), hint: t("从旧到新"), action: () => copyPatch(tab, oldest) },
+      { label: t("导出为补丁文件…"), hint: t("每个提交一个文件"), action: () => exportPatches(tab, oldest) },
       "sep",
       { label: t("复制提交哈希"), action: () => copy(newest.join("\n")) },
       { label: t("复制提交说明"), action: () => copy(list.map((p) => p.summary).join("\n")) },
