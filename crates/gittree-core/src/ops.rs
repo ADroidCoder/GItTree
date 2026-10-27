@@ -436,6 +436,17 @@ pub fn commit(dir: &Path, message: &str, amend: bool) -> Result<(), Error> {
     Ok(())
 }
 
+/// 只改最新提交的说明：--only 不带路径时不会把暂存区的改动并进去
+pub fn reword_head(dir: &Path, message: &str) -> Result<(), Error> {
+    git_with_input(dir, &["commit", "-q", "--amend", "--only", "--allow-empty", "-F", "-"], Some(message.as_bytes()))?;
+    Ok(())
+}
+
+/// 提交已经在某个远程分支上了（改写它之后需要强制推送）
+pub fn is_pushed(dir: &Path, oid: &str) -> bool {
+    git(dir, &["branch", "-r", "--contains", oid]).is_ok_and(|out| !out.trim().is_empty())
+}
+
 pub fn checkout(dir: &Path, branch: &str) -> Result<(), Error> {
     git(dir, &["switch", branch])?;
     Ok(())

@@ -26,7 +26,8 @@
 
   function onKey(e: KeyboardEvent) {
     if (e.key === "Escape") close(false);
-    if (e.key === "Enter" && !e.isComposing && !(e.target instanceof HTMLTextAreaElement)) {
+    // 多行输入框里回车是换行，⌘/Ctrl + 回车确认
+    if (e.key === "Enter" && !e.isComposing && (!(e.target instanceof HTMLTextAreaElement) || e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       close(true);
     }

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from "../lib/i18n";
   import { api, type CommitDetails, type Signature } from "../lib/api";
-  import { errorText, openIn, toast, type RepoTab } from "../lib/store.svelte";
+  import { errorText, openIn, rewordHead, toast, type RepoTab } from "../lib/store.svelte";
   import { avatarColor, formatDate, initials } from "../lib/util";
   import FileList from "./FileList.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
@@ -104,6 +104,8 @@
 
   const subject = $derived(details?.message.split("\n")[0] ?? "");
   const body = $derived(details?.message.split("\n").slice(1).join("\n").trim() ?? "");
+  /** 最新的提交可以双击说明直接改 */
+  const editable = $derived(oid === tab.repo?.head.oid);
   const totals = $derived.by(() => {
     let a = 0;
     let d = 0;
@@ -128,7 +130,13 @@
   {#if error}
     <div class="error">{error}</div>
   {:else if details}
-    <div class="head">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="head"
+      class:editable
+      title={editable ? t("双击修改提交说明") : undefined}
+      ondblclick={() => editable && (getSelection()?.removeAllRanges(), rewordHead(tab))}
+    >
       <div class="subject">{subject}</div>
       {#if body}<pre class="body">{body}</pre>{/if}
     </div>
@@ -218,6 +226,9 @@
   .head {
     padding: 14px 16px 10px;
     border-bottom: 1px solid var(--border);
+  }
+  .head.editable:hover {
+    background: var(--bg-hover);
   }
   .subject {
     font-size: 15px;

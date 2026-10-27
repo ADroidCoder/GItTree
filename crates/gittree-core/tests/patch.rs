@@ -197,3 +197,27 @@ fn sparse_clone_and_change_dirs() {
     assert!(sparse::info(&dir).sparse.is_none());
     assert!(dir.join("app/main.rs").exists());
 }
+
+/// 只改最新提交的说明：暂存区的改动不会并进去；推送过的提交能认出来
+#[test]
+fn reword_head_keeps_staged_changes() {
+    let src = temp_repo("reword-src");
+    commit_file(&src, "a.txt", "1\n", "第一个");
+    let dir = temp_dir("reword");
+    ops::git(&dir, &["clone", "-q", src.to_str().unwrap(), "."]).unwrap();
+    setup(&dir);
+    let pushed = ops::git(&dir, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    assert!(ops::is_pushed(&dir, &pushed));
+
+    commit_file(&dir, "b.txt", "b\n", "写错了");
+    let local = ops::git(&dir, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    assert!(!ops::is_pushed(&dir, &local));
+    std::fs::write(dir.join("c.txt"), "c\n").unwrap();
+    ops::git(&dir, &["add", "c.txt"]).unwrap();
+
+    ops::reword_head(&dir, "改好的说明\n\n详细描述").unwrap();
+    assert_eq!(ops::git(&dir, &["log", "--format=%B", "-1"]).unwrap().trim(), "改好的说明\n\n详细描述");
+    assert_eq!(ops::git(&dir, &["show", "--name-only", "--format=", "HEAD"]).unwrap().trim(), "b.txt");
+    assert_eq!(ops::git(&dir, &["rev-list", "--count", "HEAD"]).unwrap().trim(), "2");
+    assert_eq!(status(&dir).staged.len(), 1);
+}

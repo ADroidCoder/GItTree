@@ -510,6 +510,8 @@ enum Op {
     StageLines { path: String, header: String, staged: bool, lines: Vec<usize> },
     DiscardLines { path: String, header: String, lines: Vec<usize> },
     Commit { message: String, amend: bool },
+    /// 只改最新提交的说明，不动暂存区
+    Reword { message: String },
     Checkout { name: String },
     CheckoutRemote { remote: String, local: String },
     CheckoutDetached { oid: String },
@@ -634,6 +636,10 @@ impl Op {
                     },
                     Soft,
                 )
+            }
+            Op::Reword { message } => {
+                let first = message.lines().next().unwrap_or("").trim();
+                (tr!("修改提交说明 “{first}”", "reword “{first}”"), Soft)
             }
             Op::Checkout { name } => (tr!("切换到 {name}", "checkout {name}"), Keep),
             Op::CheckoutRemote { local, .. } => (tr!("检出 {local}", "checkout {local}"), Keep),
@@ -850,6 +856,13 @@ async fn export_patches(state: State<'_, AppState>, repo: String, oids: Vec<Stri
 async fn sparse_subdirs(state: State<'_, AppState>, repo: String, parent: String) -> CmdResult<Vec<String>> {
     let (dir, _) = dirs_of(&state, &repo)?;
     blocking(move || sparse::subdirs(&dir, &parent)).await
+}
+
+/// 提交是否已经推送到远程，改写前提醒用户
+#[tauri::command]
+async fn commit_pushed(state: State<'_, AppState>, repo: String, oid: String) -> CmdResult<bool> {
+    let (dir, _) = dirs_of(&state, &repo)?;
+    blocking(move || Ok(ops::is_pushed(&dir, &oid))).await
 }
 
 /// 二分查错的状态，只读文件，每次刷新都调用
@@ -1114,6 +1127,7 @@ fn run_op(dir: &Path, git_dir: &Path, op: Op) -> Result<String, Error> {
                 done(ops::apply_patch(d, &hunk_lines(d, &path, &header, false, &lines, true)?, false, true))
             }
             Op::Commit { message, amend } => done(ops::commit(d, &message, amend)),
+            Op::Reword { message } => done(ops::reword_head(d, &message)),
             Op::Checkout { name } => done(ops::checkout(d, &name)),
             Op::CheckoutRemote { remote, local } => done(ops::checkout_remote(d, &remote, &local)),
             Op::CheckoutDetached { oid } => done(ops::checkout_detached(d, &oid)),
@@ -1259,6 +1273,7 @@ pub fn run() {
             repo_extras,
             export_patches,
             sparse_subdirs,
+            commit_pushed,
             bisect_state,
             commit_signature,
             image_pair,

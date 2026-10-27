@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from "../lib/i18n";
   import type { RefInfo, Remote, Row, Stash } from "../lib/api";
-  import { addRemote, addSubmodule, addWorktree, app, confirm, copyPatch, copyRemoteUrl, createPull, dialog, errorText, exportPatches, mergeBranch, openFlow, openRemoteWeb, openRepo, toast, type RepoTab } from "../lib/store.svelte";
+  import { addRemote, addSubmodule, addWorktree, app, confirm, copyPatch, copyRemoteUrl, createPull, dialog, errorText, exportPatches, mergeBranch, openFlow, openRemoteWeb, openRepo, rewordHead, toast, type RepoTab } from "../lib/store.svelte";
   import { api, type Submodule, type Worktree } from "../lib/api";
   import { shareUrl } from "../lib/util";
   import Sidebar from "./Sidebar.svelte";
@@ -361,6 +361,9 @@
         { label: t("检出此提交（分离头指针）"), action: () => tab.run({ op: "checkout_detached", oid: row.oid }, t("正在检出…")) },
         { label: t("在此新建分支…"), action: () => createBranchAt(row.oid, t("提交 {0}", short)) },
         { label: t("在此新建标签…"), action: () => createTagAt(row.oid) },
+        ...(row.oid === tab.repo?.head.oid
+          ? (["sep", { label: t("修改提交说明…"), hint: t("双击详情里的说明"), action: () => rewordHead(tab) }] as MenuItem[])
+          : []),
         "sep",
         {
           label: t("Cherry-pick 到 {0}", current),

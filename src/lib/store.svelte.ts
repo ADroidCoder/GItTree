@@ -1028,6 +1028,33 @@ export async function applyPatchText(tab: RepoTab) {
   await tab.run({ op: "apply_patch", files: [], text }, t("正在应用补丁…"));
 }
 
+// ---------- 修改提交说明 ----------
+
+/** 改最新提交的说明，只改说明，暂存区的改动留着 */
+export async function rewordHead(tab: RepoTab) {
+  const oid = tab.repo?.head.oid;
+  if (!oid) return;
+  let details, pushed;
+  try {
+    [details, pushed] = await Promise.all([api.commitDetails(tab.id, oid), api.commitPushed(tab.id, oid)]);
+  } catch (e) {
+    return toast(errorText(e), "error");
+  }
+  const old = details.message.trim();
+  const d = await dialog({
+    title: t("修改提交说明"),
+    message: pushed
+      ? t("⚠ 这个提交已经推送到远程。改完后需要强制推送，别人如果已经拉取了它会产生分歧。")
+      : t("只改说明，不会把暂存区的改动加进去。"),
+    input: { value: old, multiline: true },
+    confirmText: t("保存说明"),
+    danger: pushed,
+  });
+  const message = d?.input.trim();
+  if (!message || message === old) return;
+  await tab.run({ op: "reword", message }, t("正在修改提交说明…"));
+}
+
 // ---------- 浅克隆、部分检出 ----------
 
 /** 浅克隆往前多下载 more 个提交；null 下载全部历史 */

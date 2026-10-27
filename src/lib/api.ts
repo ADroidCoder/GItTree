@@ -315,6 +315,7 @@ export type Op =
   | { op: "stage_hunk"; path: string; header: string; staged: boolean }
   | { op: "discard_hunk"; path: string; header: string }
   | { op: "commit"; message: string; amend: boolean }
+  | { op: "reword"; message: string }
   | { op: "checkout"; name: string }
   | { op: "checkout_remote"; remote: string; local: string }
   | { op: "checkout_detached"; oid: string }
@@ -476,6 +477,7 @@ export const api = {
   /** outDir 为空时返回一段补丁文本，否则返回写出的文件 */
   exportPatches: (repo: string, oids: string[], outDir: string | null) => invoke<string[]>("export_patches", { repo, oids, outDir }),
   sparseSubdirs: (repo: string, parent: string) => invoke<string[]>("sparse_subdirs", { repo, parent }),
+  commitPushed: (repo: string, oid: string) => invoke<boolean>("commit_pushed", { repo, oid }),
   bisectState: (repo: string) => invoke<BisectState>("bisect_state", { repo }),
   commitSignature: (repo: string, oid: string) => invoke<Signature | null>("commit_signature", { repo, oid }),
   imagePair: (

@@ -1166,6 +1166,14 @@ const en: Record<string, string> = {
   "浅克隆：只有最近的历史": "Shallow clone: recent history only",
   "再下载 {0} 个": "{0} more",
   "全部": "All",
+  "修改提交说明": "Edit Commit Message",
+  "修改提交说明…": "Edit Commit Message…",
+  "双击详情里的说明": "or double-click it in details",
+  "双击修改提交说明": "Double-click to edit the commit message",
+  "⚠ 这个提交已经推送到远程。改完后需要强制推送，别人如果已经拉取了它会产生分歧。": "⚠ This commit has already been pushed. After editing you'll need to force push, and anyone who already pulled it will diverge.",
+  "只改说明，不会把暂存区的改动加进去。": "Only the message changes. Staged changes are not added.",
+  "保存说明": "Save Message",
+  "正在修改提交说明…": "Editing commit message…",
 };
 
 export default en;
