@@ -7,6 +7,14 @@ use serde::Serialize;
 
 /// 单个文件超过这么多行就截断，防止界面一次渲染太多
 const MAX_LINES: usize = 20_000;
+/// 所有行的文字加起来超过这么多也截断：开头像文本、后面是二进制的文件可能有几十 MB 的一行
+const MAX_TEXT_BYTES: usize = 8 * 1024 * 1024;
+/// 一行超过这么多字只显示前面的部分，太长的行界面排版会卡住
+const MAX_LINE_CHARS: usize = 5000;
+/// 提交的文件列表统计增删行数时，超过这么大的文件不逐行对比（libgit2 会把它当成二进制）
+const MAX_STAT_SIZE: i64 = 16 * 1024 * 1024;
+/// 预览文件差异时，超过这么大先不对比，让用户决定要不要看（可能只是不小心点到了）
+const PREVIEW_SIZE: u64 = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileChange {
@@ -60,6 +68,8 @@ pub struct FileDiff {
     pub binary: bool,
     pub hunks: Vec<Hunk>,
     pub truncated: bool,
+    /// 文件太大没有逐行对比：改动前后的大小（字节，没有这一边是 0）
+    pub too_large: Option<(u64, u64)>,
 }
 
 fn person(sig: &git2::Signature) -> Person {
@@ -73,7 +83,7 @@ fn person(sig: &git2::Signature) -> Person {
 
 fn base_opts(paths: &[&str]) -> DiffOptions {
     let mut o = DiffOptions::new();
-    o.context_lines(3).ignore_submodules(true);
+    o.context_lines(3).ignore_submodules(true).max_size(MAX_STAT_SIZE);
     for p in paths {
         o.pathspec(*p);
     }
@@ -158,12 +168,19 @@ pub fn commit_details(repo: &Repository, oid: &str) -> Result<CommitDetails, Err
     })
 }
 
+/// 单个文件差异的选项。full：用户确认过要看大文件，不再按大小跳过（显示的行数和字数仍然有上限）
+fn file_opts(paths: &[&str], full: bool) -> DiffOptions {
+    let mut o = base_opts(paths);
+    // 负数表示不按大小当成二进制
+    o.max_size(if full { -1 } else { PREVIEW_SIZE as i64 });
+    o
+}
+
 /// 把 diff 中第一个文件的内容转成界面用的结构
-fn to_file_diff(diff: &Diff) -> Result<Option<FileDiff>, Error> {
+fn to_file_diff(diff: &Diff, full: bool) -> Result<Option<FileDiff>, Error> {
     if diff.deltas().len() == 0 {
         return Ok(None);
     }
-    let patch = git2::Patch::from_diff(diff, 0)?;
     let delta = diff.get_delta(0).unwrap();
     let new = path_str(delta.new_file().path());
     let old = path_str(delta.old_file().path());
@@ -173,17 +190,30 @@ fn to_file_diff(diff: &Diff) -> Result<Option<FileDiff>, Error> {
         binary: delta.flags().is_binary(),
         hunks: Vec::new(),
         truncated: false,
+        too_large: None,
     };
+    let sizes = (delta.old_file().size(), delta.new_file().size());
+    if !full && sizes.0.max(sizes.1) > PREVIEW_SIZE {
+        out.binary = true;
+        out.too_large = Some(sizes);
+        return Ok(Some(out));
+    }
+    let patch = git2::Patch::from_diff(diff, 0)?;
     let Some(patch) = patch else { return Ok(Some(out)) };
     if patch.delta().flags().is_binary() {
         out.binary = true;
         return Ok(Some(out));
     }
-    let mut total = 0;
+    let (mut total, mut bytes) = (0, 0);
     for h in 0..patch.num_hunks() {
         let (hunk, n) = patch.hunk(h)?;
-        let mut lines = Vec::with_capacity(n);
+        let mut lines = Vec::with_capacity(n.min(MAX_LINES));
         for l in 0..n {
+            // 一个代码块可能就有几百万行（比如新增的大文件），要逐行检查
+            if total + lines.len() >= MAX_LINES || bytes >= MAX_TEXT_BYTES {
+                out.truncated = true;
+                break;
+            }
             let line = patch.line_in_hunk(h, l)?;
             let kind = match line.origin() {
                 '+' | '>' => '+',
@@ -194,13 +224,20 @@ fn to_file_diff(diff: &Diff) -> Result<Option<FileDiff>, Error> {
             if matches!(line.origin(), '=' | '>' | '<') {
                 continue;
             }
-            let mut text = String::from_utf8_lossy(line.content()).into_owned();
+            // 一个字最多 4 个字节，先截一段再转换，不用把几十 MB 的一行整个转成字符串
+            let content = line.content();
+            let mut text = String::from_utf8_lossy(&content[..content.len().min(MAX_LINE_CHARS * 4 + 2)]).into_owned();
             if text.ends_with('\n') {
                 text.pop();
                 if text.ends_with('\r') {
                     text.pop();
                 }
             }
+            if let Some((cut, _)) = text.char_indices().nth(MAX_LINE_CHARS) {
+                text.truncate(cut);
+                text.push_str(" …");
+            }
+            bytes += text.len();
             lines.push(DiffLine { kind, old: line.old_lineno(), new: line.new_lineno(), text });
         }
         total += lines.len();
@@ -208,29 +245,28 @@ fn to_file_diff(diff: &Diff) -> Result<Option<FileDiff>, Error> {
             header: String::from_utf8_lossy(hunk.header()).trim_end().to_string(),
             lines,
         });
-        if total > MAX_LINES {
-            out.truncated = true;
+        if out.truncated {
             break;
         }
     }
     Ok(Some(out))
 }
 
-pub fn commit_file_diff(repo: &Repository, oid: &str, path: &str, old_path: Option<&str>) -> Result<Option<FileDiff>, Error> {
+pub fn commit_file_diff(repo: &Repository, oid: &str, path: &str, old_path: Option<&str>, full: bool) -> Result<Option<FileDiff>, Error> {
     let commit = repo.find_commit(Oid::from_str(oid)?)?;
     let tree = commit.tree()?;
     let mut paths = vec![path];
     paths.extend(old_path);
-    let mut opts = base_opts(&paths);
+    let mut opts = file_opts(&paths, full);
     let mut diff = repo.diff_tree_to_tree(parent_tree(&commit).as_ref(), Some(&tree), Some(&mut opts))?;
     if old_path.is_some() {
         find_renames(&mut diff)?;
     }
-    to_file_diff(&diff)
+    to_file_diff(&diff, full)
 }
 
-fn workdir_diff<'r>(repo: &'r Repository, path: &str, staged: bool) -> Result<Diff<'r>, Error> {
-    let mut opts = base_opts(&[path]);
+fn workdir_diff<'r>(repo: &'r Repository, path: &str, staged: bool, full: bool) -> Result<Diff<'r>, Error> {
+    let mut opts = file_opts(&[path], full);
     if staged {
         let head = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
         Ok(repo.diff_tree_to_index(head.as_ref(), None, Some(&mut opts))?)
@@ -241,8 +277,8 @@ fn workdir_diff<'r>(repo: &'r Repository, path: &str, staged: bool) -> Result<Di
 }
 
 /// 工作区文件的 diff。staged = true 看暂存区相对 HEAD 的改动，否则看工作区相对暂存区的改动。
-pub fn workdir_file_diff(repo: &Repository, path: &str, staged: bool) -> Result<Option<FileDiff>, Error> {
-    to_file_diff(&workdir_diff(repo, path, staged)?)
+pub fn workdir_file_diff(repo: &Repository, path: &str, staged: bool, full: bool) -> Result<Option<FileDiff>, Error> {
+    to_file_diff(&workdir_diff(repo, path, staged, full)?, full)
 }
 
 /// 生成只包含某一个代码块的补丁，用原始字节，避免非 UTF-8 文件（比如 GBK）被破坏。
@@ -262,7 +298,8 @@ pub fn lines_patch(
     selected: Option<&[usize]>,
     reverse: bool,
 ) -> Result<Option<Vec<u8>>, Error> {
-    let diff = workdir_diff(repo, path, staged)?;
+    // 用户已经在看这个文件的差异了（大文件也是点过“仍然预览”的），按完整内容生成补丁
+    let diff = workdir_diff(repo, path, staged, true)?;
     if diff.deltas().len() == 0 {
         return Ok(None);
     }
@@ -458,17 +495,17 @@ pub fn compare(repo: &Repository, from: &str, to: &str, three_dot: bool) -> Resu
 }
 
 /// 两个提交之间某个文件的 diff（from 和 to 都是提交号）
-pub fn compare_file_diff(repo: &Repository, from: &str, to: &str, path: &str, old_path: Option<&str>) -> Result<Option<FileDiff>, Error> {
+pub fn compare_file_diff(repo: &Repository, from: &str, to: &str, path: &str, old_path: Option<&str>, full: bool) -> Result<Option<FileDiff>, Error> {
     let a = repo.find_commit(Oid::from_str(from)?)?.tree()?;
     let b = repo.find_commit(Oid::from_str(to)?)?.tree()?;
     let mut paths = vec![path];
     paths.extend(old_path);
-    let mut opts = base_opts(&paths);
+    let mut opts = file_opts(&paths, full);
     let mut diff = repo.diff_tree_to_tree(Some(&a), Some(&b), Some(&mut opts))?;
     if old_path.is_some() {
         find_renames(&mut diff)?;
     }
-    to_file_diff(&diff)
+    to_file_diff(&diff, full)
 }
 
 #[derive(Debug, Serialize)]

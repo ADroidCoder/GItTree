@@ -427,11 +427,12 @@ async fn commit_file_diff(
     oid: String,
     path: String,
     old_path: Option<String>,
+    full: Option<bool>,
 ) -> CmdResult<Option<diff::FileDiff>> {
     let (dir, _) = dirs_of(&state, &repo)?;
     blocking(move || {
         fetch_lazy(&dir, &oid, None);
-        diff::commit_file_diff(&git2::Repository::open(dir)?, &oid, &path, old_path.as_deref())
+        diff::commit_file_diff(&git2::Repository::open(dir)?, &oid, &path, old_path.as_deref(), full.unwrap_or(false))
     })
     .await
 }
@@ -455,11 +456,12 @@ async fn compare_file_diff(
     to: String,
     path: String,
     old_path: Option<String>,
+    full: Option<bool>,
 ) -> CmdResult<Option<diff::FileDiff>> {
     let (dir, _) = dirs_of(&state, &repo)?;
     blocking(move || {
         fetch_lazy(&dir, &from, Some((&to, false)));
-        diff::compare_file_diff(&git2::Repository::open(dir)?, &from, &to, &path, old_path.as_deref())
+        diff::compare_file_diff(&git2::Repository::open(dir)?, &from, &to, &path, old_path.as_deref(), full.unwrap_or(false))
     })
     .await
 }
@@ -471,9 +473,9 @@ async fn status(state: State<'_, AppState>, repo: String) -> CmdResult<ops::Stat
 }
 
 #[tauri::command]
-async fn workdir_diff(state: State<'_, AppState>, repo: String, path: String, staged: bool) -> CmdResult<Option<diff::FileDiff>> {
+async fn workdir_diff(state: State<'_, AppState>, repo: String, path: String, staged: bool, full: Option<bool>) -> CmdResult<Option<diff::FileDiff>> {
     let (dir, _) = dirs_of(&state, &repo)?;
-    blocking(move || diff::workdir_file_diff(&git2::Repository::open(dir)?, &path, staged)).await
+    blocking(move || diff::workdir_file_diff(&git2::Repository::open(dir)?, &path, staged, full.unwrap_or(false))).await
 }
 
 #[tauri::command]

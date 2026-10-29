@@ -115,6 +115,8 @@ export interface FileDiff {
   binary: boolean;
   hunks: Hunk[];
   truncated: boolean;
+  /** 文件太大，没有逐行对比：改动前后的大小（字节）。full 传 true 才对比 */
+  too_large: [number, number] | null;
 }
 
 export interface CompareCommit {
@@ -454,11 +456,11 @@ export const api = {
   search: (repo: string, query: string, kind: SearchKind = "text") => invoke<number[]>("search", { repo, query, kind }),
   rowOf: (repo: string, oid: string) => invoke<number | null>("row_of", { repo, oid }),
   commitDetails: (repo: string, oid: string) => invoke<CommitDetails>("commit_details", { repo, oid }),
-  commitFileDiff: (repo: string, oid: string, path: string, oldPath: string | null) =>
-    invoke<FileDiff | null>("commit_file_diff", { repo, oid, path, oldPath }),
+  commitFileDiff: (repo: string, oid: string, path: string, oldPath: string | null, full = false) =>
+    invoke<FileDiff | null>("commit_file_diff", { repo, oid, path, oldPath, full }),
   status: (repo: string) => invoke<Status>("status", { repo }),
-  workdirDiff: (repo: string, path: string, staged: boolean) =>
-    invoke<FileDiff | null>("workdir_diff", { repo, path, staged }),
+  workdirDiff: (repo: string, path: string, staged: boolean, full = false) =>
+    invoke<FileDiff | null>("workdir_diff", { repo, path, staged, full }),
   stashList: (repo: string) => invoke<Stash[]>("stash_list", { repo }),
   lastCommitMessage: (repo: string) => invoke<string>("last_commit_message", { repo }),
   gitOp: (repo: string, op: Op) => invoke<string>("git_op", { repo, op }),
@@ -468,8 +470,8 @@ export const api = {
   rebasePlan: (repo: string, from: string) => invoke<PlanCommit[]>("rebase_plan", { repo, from }),
   listRemotes: (repo: string) => invoke<Remote[]>("list_remotes", { repo }),
   compare: (repo: string, from: string, to: string, threeDot: boolean) => invoke<Compare>("compare", { repo, from, to, threeDot }),
-  compareFileDiff: (repo: string, from: string, to: string, path: string, oldPath: string | null) =>
-    invoke<FileDiff | null>("compare_file_diff", { repo, from, to, path, oldPath }),
+  compareFileDiff: (repo: string, from: string, to: string, path: string, oldPath: string | null, full = false) =>
+    invoke<FileDiff | null>("compare_file_diff", { repo, from, to, path, oldPath, full }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),
   reflog: (repo: string, target: string | null) => invoke<(ReflogEntry & { row: number | null })[]>("reflog", { repo, target }),

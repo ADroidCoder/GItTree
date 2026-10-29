@@ -10,6 +10,7 @@
   import { t } from "../lib/i18n";
   import { api, type ImagePair, type ImageSide } from "../lib/api";
   import { errorText, type DiffTarget, type RepoTab } from "../lib/store.svelte";
+  import { fileSize as size } from "../lib/util";
 
   let { tab, target }: { tab: RepoTab; target: DiffTarget } = $props();
 
@@ -41,12 +42,6 @@
     return ext === "svg" ? "image/svg+xml" : ext === "jpg" ? "image/jpeg" : ext === "ico" ? "image/x-icon" : `image/${ext}`;
   });
   const src = (s: ImageSide | null) => (s?.data ? `data:${mime};base64,${s.data}` : null);
-
-  function size(n: number) {
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  }
 
   function onLoad(which: "old" | "new", e: Event) {
     const img = e.currentTarget as HTMLImageElement;

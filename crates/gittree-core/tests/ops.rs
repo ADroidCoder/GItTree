@@ -36,14 +36,14 @@ fn stage_single_hunk_keeps_other_hunk_unstaged() {
     std::fs::write(dir.join("a.txt"), &changed).unwrap();
 
     let repo = git2::Repository::open(&dir).unwrap();
-    let d = diff::workdir_file_diff(&repo, "a.txt", false).unwrap().unwrap();
+    let d = diff::workdir_file_diff(&repo, "a.txt", false, false).unwrap().unwrap();
     assert_eq!(d.hunks.len(), 2);
 
     // 只暂存第一个代码块
     let patch = diff::hunk_patch(&repo, "a.txt", false, &d.hunks[0].header).unwrap().unwrap();
     ops::apply_patch(&dir, &patch, true, false).unwrap();
-    let staged = diff::workdir_file_diff(&repo, "a.txt", true).unwrap().unwrap();
-    let unstaged = diff::workdir_file_diff(&repo, "a.txt", false).unwrap().unwrap();
+    let staged = diff::workdir_file_diff(&repo, "a.txt", true, false).unwrap().unwrap();
+    let unstaged = diff::workdir_file_diff(&repo, "a.txt", false, false).unwrap().unwrap();
     assert_eq!(staged.hunks.len(), 1);
     assert_eq!(unstaged.hunks.len(), 1);
     assert!(staged.hunks[0].lines.iter().any(|l| l.text == "line 2 changed"));
@@ -52,7 +52,7 @@ fn stage_single_hunk_keeps_other_hunk_unstaged() {
     // 再把它从暂存区撤回
     let patch = diff::hunk_patch(&repo, "a.txt", true, &staged.hunks[0].header).unwrap().unwrap();
     ops::apply_patch(&dir, &patch, true, true).unwrap();
-    assert!(diff::workdir_file_diff(&repo, "a.txt", true).unwrap().is_none());
+    assert!(diff::workdir_file_diff(&repo, "a.txt", true, false).unwrap().is_none());
 
     // 工作区文件一个字节都没被改动
     assert_eq!(std::fs::read(dir.join("a.txt")).unwrap(), changed);
@@ -85,7 +85,7 @@ fn commit_details_lists_files_with_stats() {
     let r = d.files.iter().find(|f| f.path == "new.txt").unwrap();
     assert_eq!(r.status, 'R');
     assert_eq!(r.old_path.as_deref(), Some("old.txt"));
-    let fd = diff::commit_file_diff(&repo, &head, "a.txt", None).unwrap().unwrap();
+    let fd = diff::commit_file_diff(&repo, &head, "a.txt", None, false).unwrap().unwrap();
     let kinds: String = fd.hunks[0].lines.iter().map(|l| l.kind).collect();
     assert_eq!(kinds, " -+ +");
     std::fs::remove_dir_all(&dir).unwrap();
@@ -316,7 +316,7 @@ fn stage_unstage_and_discard_selected_lines() {
     // 一个代码块里：改了 b、删了 c、加了两行
     std::fs::write(dir.join("f.txt"), "a\nB\nd\nx\ny\n").unwrap();
     let repo = git2::Repository::open(&dir).unwrap();
-    let hunk = |staged: bool| diff::workdir_file_diff(&repo, "f.txt", staged).unwrap().unwrap().hunks.remove(0);
+    let hunk = |staged: bool| diff::workdir_file_diff(&repo, "f.txt", staged, false).unwrap().unwrap().hunks.remove(0);
     let h = hunk(false);
     let idx = |text: &str, kind: char| h.lines.iter().position(|l| l.text == text && l.kind == kind).unwrap();
     let index_content = || ops::git(&dir, &["show", ":f.txt"]).unwrap();
@@ -363,7 +363,7 @@ fn stage_selected_lines_without_trailing_newline() {
     ops::commit(&dir, "初始", false).unwrap();
     std::fs::write(dir.join("f.txt"), "a\nnew\nLAST").unwrap();
     let repo = git2::Repository::open(&dir).unwrap();
-    let h = diff::workdir_file_diff(&repo, "f.txt", false).unwrap().unwrap().hunks.remove(0);
+    let h = diff::workdir_file_diff(&repo, "f.txt", false, false).unwrap().unwrap().hunks.remove(0);
     // 只暂存最后一行的修改，不要新增的 new
     let sel: Vec<usize> = h.lines.iter().enumerate().filter(|(_, l)| l.text == "last" || l.text == "LAST").map(|(i, _)| i).collect();
     let p = diff::lines_patch(&repo, "f.txt", false, &h.header, Some(&sel), false).unwrap().unwrap();
@@ -404,7 +404,7 @@ fn compare_branches() {
     let c2 = diff::compare(&repo, "main", "release", false).unwrap();
     assert!(c2.files.iter().any(|f| f.path == "m.txt" && f.status == 'D'));
 
-    let d = diff::compare_file_diff(&repo, c.base.as_ref().unwrap(), &c.to, "a.txt", None).unwrap().unwrap();
+    let d = diff::compare_file_diff(&repo, c.base.as_ref().unwrap(), &c.to, "a.txt", None, false).unwrap().unwrap();
     assert!(d.hunks[0].lines.iter().any(|l| l.kind == '+' && l.text == "release"));
 
     assert!(diff::compare(&repo, "main", "no-such-branch", true).is_err());
@@ -435,4 +435,28 @@ fn fetch_retagged_remote_tag() {
 
     ops::fetch_overwriting_tags(&local).unwrap();
     assert_eq!(ops::git(&local, &["rev-parse", "v1"]).unwrap().trim(), new);
+}
+
+/// 大文件先不对比，确认后再看；行数、单行长度都有上限，避免界面卡住
+#[test]
+fn big_file_diff_is_limited() {
+    let dir = temp_repo("bigdiff");
+    // 300 万字节、30 万行的新文件：只有一个代码块
+    let text: String = (0..300_000).map(|i| format!("line {i:04}\n")).collect();
+    std::fs::write(dir.join("big.txt"), &text).unwrap();
+    // 开头像文本，后面是一行很长的内容
+    std::fs::write(dir.join("long.js"), format!("a\n{}\n", "x".repeat(100_000))).unwrap();
+    let repo = git2::Repository::open(&dir).unwrap();
+
+    let d = diff::workdir_file_diff(&repo, "big.txt", false, false).unwrap().unwrap();
+    assert_eq!(d.too_large, Some((0, text.len() as u64)));
+    assert!(d.hunks.is_empty());
+
+    let d = diff::workdir_file_diff(&repo, "big.txt", false, true).unwrap().unwrap();
+    assert!(d.too_large.is_none() && d.truncated);
+    assert_eq!(d.hunks.iter().map(|h| h.lines.len()).sum::<usize>(), 20_000);
+
+    let d = diff::workdir_file_diff(&repo, "long.js", false, false).unwrap().unwrap();
+    let long = &d.hunks[0].lines[1].text;
+    assert!(long.chars().count() < 5100 && long.ends_with('…'));
 }

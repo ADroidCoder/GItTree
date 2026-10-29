@@ -42,6 +42,13 @@ export function splitPath(p: string) {
   return i < 0 ? { dir: "", name: p } : { dir: p.slice(0, i + 1), name: p.slice(i + 1) };
 }
 
+/** 文件大小：12 B / 3.4 KB / 5.6 MB */
+export function fileSize(n: number) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
 /**

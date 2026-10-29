@@ -150,7 +150,6 @@ const en: Record<string, string> = {
   "没有文本改动（可能只是文件权限变化）": "No text changes (possibly a file mode change)",
   取消暂存代码块: "Unstage hunk",
   暂存代码块: "Stage hunk",
-  "文件改动太多，只显示了前 20000 行": "The diff is too large; only the first 20,000 lines are shown",
 
   // ---------- 文件列表 ----------
   新增: "Added",
@@ -1177,6 +1176,10 @@ const en: Record<string, string> = {
   "其他分支和标签都已经获取到了，只有下面这些标签没有更新：远程仓库里它们已经指向了别的提交，和本地的不一样。\n\n{0}\n\n一般是有人删掉标签后又重新打了一次。用远程的覆盖本地的？": "Everything else was fetched, but these tags weren't updated: on the remote they now point to different commits than your local ones.\n\n{0}\n\nUsually someone deleted and recreated the tag. Overwrite your local tags with the remote ones?",
   "用远程的覆盖": "Use Remote Tags",
   "…等 {0} 个": "…{0} in total",
+  "文件较大（{0} → {1}），预览可能会卡一会儿。": "This file is large ({0} → {1}). Previewing it may take a moment.",
+  "文件较大（{0}），预览可能会卡一会儿。": "This file is large ({0}). Previewing it may take a moment.",
+  "仍然预览": "Preview Anyway",
+  "文件改动太多，只显示了前面一部分": "This file has too many changes. Only the first part is shown",
   "正在修改提交说明…": "Editing commit message…",
 };
 

@@ -5,6 +5,7 @@
   import { intraline, languageOf, renderLine } from "../lib/highlight";
   import ImageDiff, { isImage } from "./ImageDiff.svelte";
   import { prefs } from "../lib/prefs";
+  import { fileSize } from "../lib/util";
 
   let {
     tab,
@@ -32,6 +33,10 @@
   let hbars: HTMLDivElement[] = $state([]);
   /** 铺满窗口查看 */
   let full = $state(false);
+  /** 用户确认要看的大文件；换了文件就要重新确认 */
+  let confirmedBig = $state<string | null>(null);
+  const targetKey = (d: DiffTarget) => [d.source, d.oid, d.from, d.to, d.staged, d.path].join("\0");
+  const showBig = $derived(confirmedBig === targetKey(target));
 
   function toggleSplit() {
     split = !split;
@@ -41,12 +46,13 @@
   // 目标文件变化或仓库刷新后重新加载
   $effect(() => {
     const t = target;
+    const big = showBig;
     void tab.graphVersion;
     void tab.status;
     let cancelled = false;
     loading = true;
     tab
-      .loadDiff(t)
+      .loadDiff(t, big)
       .then((d) => {
         if (cancelled) return;
         diff = d;
@@ -215,7 +221,14 @@
     return { old: size("-"), new: size("+") };
   });
   /** 图片：二进制的，或者是 LFS 指针 */
-  const showImage = $derived(isImage(target.path) && !!diff && (diff.binary || !!lfsSizes));
+  /** 太大的文件先不对比，问用户要不要看；图片 10MB 以内照常显示 */
+  const askBig = $derived.by(() => {
+    const big = diff?.too_large;
+    if (!big || showBig) return null;
+    const size = Math.max(big[0], big[1]);
+    return isImage(target.path) && size <= 10 * 1024 * 1024 ? null : big;
+  });
+  const showImage = $derived(!askBig && isImage(target.path) && !!diff && (diff.binary || !!lfsSizes));
 
   async function hunkAction(header: string, action: "stage" | "unstage" | "discard") {
     if (action === "discard") {
@@ -306,6 +319,13 @@
     <div class="msg">{t("加载中…")}</div>
   {:else if !diff}
     <div class="msg">{t("没有改动")}</div>
+  {:else if askBig}
+    <div class="msg">
+      {askBig[0] && askBig[1] && askBig[0] !== askBig[1]
+        ? t("文件较大（{0} → {1}），预览可能会卡一会儿。", fileSize(askBig[0]), fileSize(askBig[1]))
+        : t("文件较大（{0}），预览可能会卡一会儿。", fileSize(Math.max(askBig[0], askBig[1])))}
+      <div class="msg-actions"><button onclick={() => (confirmedBig = targetKey(target))}>{t("仍然预览")}</button></div>
+    </div>
   {:else if showImage}
     <ImageDiff {tab} {target} />
   {:else if diff.binary}
@@ -395,7 +415,7 @@
           {/each}
         </div>
         {#if diff.truncated && end >= items.length}
-          <div class="truncated" style="top:{items.length * LINE_H}px">{t("文件改动太多，只显示了前 20000 行")}</div>
+          <div class="truncated" style="top:{items.length * LINE_H}px">{t("文件改动太多，只显示了前面一部分")}</div>
         {/if}
       </div>
     </div>
@@ -494,6 +514,9 @@
     padding: 40px;
     text-align: center;
     color: var(--text-dim);
+  }
+  .msg-actions {
+    margin-top: 12px;
   }
   .msg.error {
     color: var(--del);

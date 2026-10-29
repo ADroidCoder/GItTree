@@ -638,10 +638,11 @@ export class RepoTab {
     this.scrollTo(row);
   }
 
-  loadDiff(t: DiffTarget): Promise<FileDiff | null> {
-    if (t.source === "commit") return api.commitFileDiff(this.id, t.oid!, t.path, t.oldPath);
-    if (t.source === "compare") return api.compareFileDiff(this.id, t.from!, t.to!, t.path, t.oldPath);
-    return api.workdirDiff(this.id, t.path, !!t.staged);
+  /** full：大文件也逐行对比（用户点了“仍然预览”） */
+  loadDiff(t: DiffTarget, full = false): Promise<FileDiff | null> {
+    if (t.source === "commit") return api.commitFileDiff(this.id, t.oid!, t.path, t.oldPath, full);
+    if (t.source === "compare") return api.compareFileDiff(this.id, t.from!, t.to!, t.path, t.oldPath, full);
+    return api.workdirDiff(this.id, t.path, !!t.staged, full);
   }
 }
 
