@@ -1,6 +1,6 @@
 [package]
 name = "gittree"
-version = "0.4.7"
+version = "0.4.8"
 description = "高性能 Git 桌面客户端"
 edition = "2024"
 license = "Apache-2.0"
