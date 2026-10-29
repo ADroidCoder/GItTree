@@ -2,6 +2,7 @@
   import { t } from "../lib/i18n";
   import { api, type Choice, type ConflictFile } from "../lib/api";
   import { confirm, errorText, type RepoTab } from "../lib/store.svelte";
+  import { fileSize } from "../lib/util";
 
   let { tab, path, onClose }: { tab: RepoTab; path: string; onClose: () => void } = $props();
 
@@ -131,7 +132,10 @@
     <div class="msg">{t("加载中…")}</div>
   {:else if file.binary || file.conflicts === 0}
     <div class="msg">
-      {#if file.binary}
+      {#if file.too_large}
+        {t("文件太大（{0}），无法逐处合并，请选择整个文件使用哪一边的版本。", fileSize(file.too_large))}
+        <br />{t("如果它其实是二进制文件，git 可能已经把冲突标记写进去，现在的文件已经不能用了，选一边就会恢复成那一边的完整内容。")}
+      {:else if file.binary}
         {t("二进制文件无法逐处合并，请选择整个文件使用哪一边的版本。")}
       {:else if !file.ours_exists || !file.theirs_exists}
         {t("一边修改了这个文件，另一边把它删除了。请选择保留修改后的文件，或者删除它。")}

@@ -36,6 +36,8 @@ pub struct ConflictFile {
     /// 是 UTF-8 文本，可以手动编辑
     pub utf8: bool,
     pub binary: bool,
+    /// 文件太大没有逐处解析（字节数），只能整个选一边
+    pub too_large: Option<u64>,
     /// “当前”一侧有这个文件（没有说明这一侧删除了它）
     pub ours_exists: bool,
     pub theirs_exists: bool,
@@ -149,10 +151,38 @@ fn stages(dir: &Path, path: &str) -> Result<(bool, bool), Error> {
     Ok((ours, theirs))
 }
 
+/// 超过这么大的冲突文件不逐处解析，界面上几十 MB 的内容会卡住
+const MAX_PARSE_SIZE: u64 = 2 * 1024 * 1024;
+
+/// 看起来是二进制：开头有 NUL，或者控制字符很多。
+/// 没有 NUL 的二进制文件 git 也会当成文本合并，插进去成百上千处冲突标记。
+/// GBK 等编码的中文是 0x80 以上的字节，不算控制字符
+fn looks_binary(data: &[u8]) -> bool {
+    let head = &data[..data.len().min(64 * 1024)];
+    if head.iter().take(8000).any(|&b| b == 0) {
+        return true;
+    }
+    let control = head.iter().filter(|&&b| (b < 0x20 && !matches!(b, b'\t' | b'\n' | b'\r' | 0x0c)) || b == 0x7f).count();
+    control * 20 > head.len()
+}
+
 pub fn load(dir: &Path, path: &str) -> Result<ConflictFile, Error> {
     let (ours_exists, theirs_exists) = stages(dir, path)?;
+    let size = std::fs::metadata(dir.join(path)).map(|m| m.len()).unwrap_or(0);
+    if size > MAX_PARSE_SIZE {
+        return Ok(ConflictFile {
+            path: path.to_string(),
+            chunks: Vec::new(),
+            conflicts: 0,
+            utf8: false,
+            binary: true,
+            too_large: Some(size),
+            ours_exists,
+            theirs_exists,
+        });
+    }
     let data = std::fs::read(dir.join(path)).unwrap_or_default();
-    let binary = data.iter().take(8000).any(|&b| b == 0);
+    let binary = looks_binary(&data);
     let utf8 = std::str::from_utf8(&data).is_ok();
     let raw = if binary { Vec::new() } else { parse(&data) };
     let mut conflicts = 0;
@@ -172,7 +202,7 @@ pub fn load(dir: &Path, path: &str) -> Result<ConflictFile, Error> {
             }
         })
         .collect();
-    Ok(ConflictFile { path: path.to_string(), chunks, conflicts, utf8, binary, ours_exists, theirs_exists })
+    Ok(ConflictFile { path: path.to_string(), chunks, conflicts, utf8, binary, too_large: None, ours_exists, theirs_exists })
 }
 
 /// 用户对一处冲突的选择
@@ -247,6 +277,16 @@ pub fn resolve_side(dir: &Path, path: &str, theirs: bool) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binary_without_nul_is_detected() {
+        // 没有 NUL 但控制字符很多的二进制数据
+        let bin: Vec<u8> = (0..20_000u32).map(|i| (i * 7 % 255 + 1) as u8).collect();
+        assert!(looks_binary(&bin));
+        // GBK 中文（“中文”= D6 D0 CE C4）和普通文本不算
+        assert!(!looks_binary(&b"\xD6\xD0\xCE\xC4\n".repeat(1000)));
+        assert!(!looks_binary(b"fn main() {\n\tprintln!();\n}\n"));
+    }
 
     #[test]
     fn parse_markers_with_base() {

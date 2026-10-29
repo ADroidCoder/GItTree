@@ -409,6 +409,8 @@ export interface ConflictFile {
   /** UTF-8 文本才能手动编辑 */
   utf8: boolean;
   binary: boolean;
+  /** 文件太大没有逐处解析（字节数），只能整个选一边 */
+  too_large: number | null;
   ours_exists: boolean;
   theirs_exists: boolean;
 }

@@ -1180,6 +1180,8 @@ const en: Record<string, string> = {
   "文件较大（{0}），预览可能会卡一会儿。": "This file is large ({0}). Previewing it may take a moment.",
   "仍然预览": "Preview Anyway",
   "文件改动太多，只显示了前面一部分": "This file has too many changes. Only the first part is shown",
+  "文件太大（{0}），无法逐处合并，请选择整个文件使用哪一边的版本。": "This file is too large ({0}) to merge conflict by conflict. Choose which side's version of the whole file to use.",
+  "如果它其实是二进制文件，git 可能已经把冲突标记写进去，现在的文件已经不能用了，选一边就会恢复成那一边的完整内容。": "If it's actually a binary file, git may have written conflict markers into it and the current file is unusable. Choosing a side restores that side's complete content.",
   "正在修改提交说明…": "Editing commit message…",
 };
 
