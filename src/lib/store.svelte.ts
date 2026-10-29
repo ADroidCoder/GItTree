@@ -101,6 +101,8 @@ const OVERWRITE = /would be overwritten by checkout|untracked working tree files
 const PULL_BLOCKED = /would be overwritten by merge|cannot pull with rebase|commit your changes or stash them before you merge|untracked working tree files would be overwritten by merge/i;
 /** 分支已经在另一个工作树里检出了 */
 const IN_WORKTREE = /already (?:checked out|used by worktree) at '([^']+)'/i;
+/** 远程把标签改指到了别的提交，获取时拒绝覆盖本地的同名标签 */
+const CLOBBER_TAG = /\[rejected\]\s+(\S+)\s+->\s+\S+\s+\(would clobber existing tag\)/g;
 
 /** 通知里用的操作名 */
 function opName(op: Op["op"]) {
@@ -424,7 +426,11 @@ export class RepoTab {
       const blocked = SWITCH_OPS.has(op.op) && OVERWRITE.test(errorText(e));
       const pullBlocked = op.op === "pull" && PULL_BLOCKED.test(errorText(e));
       const inWorktree = SWITCH_OPS.has(op.op) ? IN_WORKTREE.exec(errorText(e)) : null;
-      if (unmerged) {
+      const clobbered = op.op === "fetch" && !op.overwrite_tags ? [...errorText(e).matchAll(CLOBBER_TAG)].map((m) => m[1]) : [];
+      if (clobbered.length) {
+        const tab = this;
+        setTimeout(() => offerOverwriteTags(tab, clobbered));
+      } else if (unmerged) {
         const tab = this;
         setTimeout(() => offerForceDelete(tab, op.name));
       } else if (blocked || pullBlocked) {
@@ -837,6 +843,20 @@ async function offerForceDelete(tab: RepoTab, name: string) {
     true,
   );
   if (ok) await tab.run({ op: "delete_branch", name, force: true });
+}
+
+/** 远程改过的标签：其他分支和标签已经获取到了，问要不要用远程的覆盖本地的这几个标签 */
+async function offerOverwriteTags(tab: RepoTab, tags: string[]) {
+  const list = tags.length > 8 ? [...tags.slice(0, 8), t("…等 {0} 个", tags.length)] : tags;
+  const ok = await confirm(
+    t("远程的标签改过了"),
+    t(
+      "其他分支和标签都已经获取到了，只有下面这些标签没有更新：远程仓库里它们已经指向了别的提交，和本地的不一样。\n\n{0}\n\n一般是有人删掉标签后又重新打了一次。用远程的覆盖本地的？",
+      list.join("\n"),
+    ),
+    t("用远程的覆盖"),
+  );
+  if (ok) await tab.run({ op: "fetch", overwrite_tags: true }, t("正在获取远程更新…"));
 }
 
 async function offerForcePush(tab: RepoTab) {

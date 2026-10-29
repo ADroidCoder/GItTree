@@ -538,6 +538,9 @@ enum Op {
         /// 后台自动获取：需要登录时不弹窗
         #[serde(default)]
         quiet: bool,
+        /// 远程改过的标签用远程的覆盖本地的
+        #[serde(default)]
+        overwrite_tags: bool,
     },
     Pull,
     Push { force: bool },
@@ -1143,8 +1146,9 @@ fn run_op(dir: &Path, git_dir: &Path, op: Op) -> Result<String, Error> {
             Op::Reset { oid, mode } => done(ops::reset(d, &oid, &mode)),
             Op::CreateTag { name, oid, message } => done(ops::create_tag(d, &name, &oid, message.as_deref())),
             Op::DeleteTag { name } => done(ops::delete_tag(d, &name)),
-            Op::Fetch { quiet: true } => ops::without_prompt(|| ops::fetch(d)),
-            Op::Fetch { quiet: false } => ops::fetch(d),
+            Op::Fetch { quiet: true, .. } => ops::without_prompt(|| ops::fetch(d)),
+            Op::Fetch { overwrite_tags: true, .. } => ops::fetch_overwriting_tags(d),
+            Op::Fetch { .. } => ops::fetch(d),
             Op::Pull => ops::pull(d),
             Op::Push { force } => ops::push(d, force),
             Op::StashPush { message, paths } => done(ops::stash_push(d, message.as_deref(), &paths)),

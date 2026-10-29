@@ -409,3 +409,30 @@ fn compare_branches() {
 
     assert!(diff::compare(&repo, "main", "no-such-branch", true).is_err());
 }
+
+/// 远程把标签改指到别的提交：普通获取拒绝覆盖本地标签，可以选择用远程的覆盖
+#[test]
+fn fetch_retagged_remote_tag() {
+    let remote = temp_repo("retag-remote");
+    let commit = |msg: &str| {
+        std::fs::write(remote.join("a.txt"), msg).unwrap();
+        ops::stage_all(&remote).unwrap();
+        ops::commit(&remote, msg, false).unwrap();
+        ops::git(&remote, &["rev-parse", "HEAD"]).unwrap().trim().to_string()
+    };
+    commit("一");
+    ops::git(&remote, &["tag", "v1"]).unwrap();
+    let local = temp_repo("retag-local");
+    ops::git(&local, &["remote", "add", "origin", &format!("file://{}", remote.display())]).unwrap();
+    ops::fetch(&local).unwrap();
+
+    let new = commit("二");
+    ops::git(&remote, &["tag", "-f", "v1"]).unwrap();
+    let err = ops::fetch(&local).unwrap_err().to_string();
+    assert!(err.contains("would clobber existing tag"), "{err}");
+    // 分支还是更新了
+    assert_eq!(ops::git(&local, &["rev-parse", "origin/main"]).unwrap().trim(), new);
+
+    ops::fetch_overwriting_tags(&local).unwrap();
+    assert_eq!(ops::git(&local, &["rev-parse", "v1"]).unwrap().trim(), new);
+}

@@ -732,6 +732,11 @@ pub fn fetch(dir: &Path) -> Result<String, Error> {
     git(dir, &["fetch", "--all", "--prune", "--tags", "--progress"])
 }
 
+/// 远程把标签改指到别的提交后，普通获取会拒绝（would clobber existing tag），这里用远程的覆盖本地的
+pub fn fetch_overwriting_tags(dir: &Path) -> Result<String, Error> {
+    git(dir, &["fetch", "--all", "--prune", "--tags", "--force", "--progress"])
+}
+
 #[derive(Debug, Default, Deserialize)]
 pub struct CloneOptions {
     /// 浅克隆：只下载每个分支最近的这么多个提交

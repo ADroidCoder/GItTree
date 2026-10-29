@@ -340,7 +340,7 @@ export type Op =
   | { op: "reset"; oid: string; mode: "soft" | "mixed" | "hard" }
   | { op: "create_tag"; name: string; oid: string; message: string | null }
   | { op: "delete_tag"; name: string }
-  | { op: "fetch"; quiet?: boolean }
+  | { op: "fetch"; quiet?: boolean; overwrite_tags?: boolean }
   | { op: "pull" }
   | { op: "push"; force: boolean }
   | { op: "stash_push"; message: string | null; paths?: string[] }

@@ -1173,6 +1173,10 @@ const en: Record<string, string> = {
   "⚠ 这个提交已经推送到远程。改完后需要强制推送，别人如果已经拉取了它会产生分歧。": "⚠ This commit has already been pushed. After editing you'll need to force push, and anyone who already pulled it will diverge.",
   "只改说明，不会把暂存区的改动加进去。": "Only the message changes. Staged changes are not added.",
   "保存说明": "Save Message",
+  "远程的标签改过了": "Tags changed on the remote",
+  "其他分支和标签都已经获取到了，只有下面这些标签没有更新：远程仓库里它们已经指向了别的提交，和本地的不一样。\n\n{0}\n\n一般是有人删掉标签后又重新打了一次。用远程的覆盖本地的？": "Everything else was fetched, but these tags weren't updated: on the remote they now point to different commits than your local ones.\n\n{0}\n\nUsually someone deleted and recreated the tag. Overwrite your local tags with the remote ones?",
+  "用远程的覆盖": "Use Remote Tags",
+  "…等 {0} 个": "…{0} in total",
   "正在修改提交说明…": "Editing commit message…",
 };
 
