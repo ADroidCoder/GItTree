@@ -15,6 +15,7 @@
   let treeView = $state(false);
 
   const st = $derived(tab.status);
+  const subjectLength = $derived(summary.split("\n", 1)[0].length);
 
   function toItems(list: StatusEntry[], staged: boolean): FileItem[] {
     return list.map((e) => ({
@@ -332,14 +333,14 @@
         {t("⚠ 还没有设置提交身份（用户名和邮箱），点这里设置")}
       {/if}
     </button>
-    <input class="summary" placeholder={t("提交说明（必填）")} bind:value={summary} onkeydown={onKey} maxlength="200" />
+    <textarea class="summary" placeholder={t("提交说明（必填）")} bind:value={summary} onkeydown={onKey} rows="2" wrap="soft"></textarea>
     <textarea placeholder={t("详细描述（可选）")} bind:value={description} onkeydown={onKey} rows="4"></textarea>
     <div class="commit-row">
       <label class="amend">
         <input type="checkbox" checked={amend} onchange={toggleAmend} />
         {t("修改上一次提交")}
       </label>
-      <span class="count">{summary.length > 72 ? `${summary.length}/72` : ""}</span>
+      <span class="count">{subjectLength > 72 ? `${subjectLength}/72` : ""}</span>
       <button class="primary" disabled={committing} onclick={commit} title={isMac ? "⌘ + Enter" : "Ctrl + Enter"}>
         {amend ? t("修改提交") : staged.length ? t("提交 {0} 个文件", staged.length) : t("提交")}
       </button>
@@ -447,6 +448,7 @@
     border-top: 1px solid var(--border);
   }
   .summary {
+    min-height: 54px;
     font-weight: 600;
   }
   textarea {
