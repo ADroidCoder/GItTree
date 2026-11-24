@@ -141,6 +141,8 @@ export class RepoTab {
   remotes = $state<Remote[]>([]);
   selectedOid = $state<string | null>(null);
   selectedRow = $state<number | null>(null);
+  /** 侧边栏选中的分支；多个分支可能指向同一行，不能按行号判断 */
+  selectedRef = $state<string | null>(null);
   /** 提交图里多选的提交（⌘/Ctrl 或 Shift 点击），按行号排（新的在前）；不到两个时为空 */
   picked = $state<Picked[]>([]);
   /** 右侧面板显示提交详情、工作区还是 stash */
@@ -293,6 +295,8 @@ export class RepoTab {
             this.selectedRow = await api.rowOf(this.id, this.selectedOid);
             if (this.selectedRow === null) this.selectedOid = null;
           }
+          if (this.selectedRef && !this.repo.refs.some((r) => r.full === this.selectedRef && r.oid === this.selectedOid && r.row !== null))
+            this.selectedRef = null;
           await this.repick();
           await Promise.all([this.refreshStatus(), this.refreshStashes(), this.refreshFlow(), this.refreshBisect()]);
         } while (this.refreshAgain);
@@ -370,6 +374,7 @@ export class RepoTab {
     this.panel = "stash";
     this.selectedRow = null;
     this.selectedOid = null;
+    this.selectedRef = null;
   }
 
   /** 只显示指定的分支（空数组 = 显示全部，["HEAD"] = 只看当前分支） */
@@ -379,6 +384,7 @@ export class RepoTab {
     try {
       this.repo = await api.setFocus(this.id, refs);
       this.graphVersion++;
+      this.selectedRef = null;
       saveFocus(this.id, refs);
       if (this.selectedOid) {
         this.selectedRow = await api.rowOf(this.id, this.selectedOid);
@@ -559,7 +565,15 @@ export class RepoTab {
     this.picked = [];
     this.selectedRow = row;
     this.selectedOid = oid;
+    this.selectedRef = null;
     this.panel = "commit";
+  }
+
+  selectRef(ref: RefInfo) {
+    if (ref.row === null) return;
+    this.select(ref.row, ref.oid);
+    this.selectedRef = ref.full;
+    this.scrollTo(ref.row);
   }
 
   /** ⌘/Ctrl 点击：把提交加入多选，已经选了就移出 */
@@ -616,6 +630,7 @@ export class RepoTab {
       this.picked = [];
       this.selectedRow = null;
       this.selectedOid = oid;
+      this.selectedRef = null;
       this.panel = "commit";
     }
   }
@@ -625,6 +640,7 @@ export class RepoTab {
     this.panel = "wip";
     this.selectedRow = null;
     this.selectedOid = null;
+    this.selectedRef = null;
   }
 
   scrollTo(row: number) {

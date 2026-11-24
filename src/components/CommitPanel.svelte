@@ -137,8 +137,16 @@
       title={editable ? t("双击修改提交说明") : undefined}
       ondblclick={() => editable && (getSelection()?.removeAllRanges(), rewordHead(tab))}
     >
-      <div class="subject">{subject}</div>
-      {#if body}<pre class="body">{body}</pre>{/if}
+      <div class="message-row">
+        <div class="subject">{subject}</div>
+        <button class="copy-message" onclick={() => copy(subject)} ondblclick={(e) => e.stopPropagation()} title={t("复制标题")} aria-label={t("复制标题")}>⧉</button>
+      </div>
+      {#if body}
+        <div class="message-row body-row">
+          <pre class="body">{body}</pre>
+          <button class="copy-message" onclick={() => copy(body)} ondblclick={(e) => e.stopPropagation()} title={t("复制正文")} aria-label={t("复制正文")}>⧉</button>
+        </div>
+      {/if}
     </div>
     <div class="meta">
       <div class="person">
@@ -230,14 +238,28 @@
   .head.editable:hover {
     background: var(--bg-hover);
   }
+  .message-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
   .subject {
+    flex: 1;
+    min-width: 0;
     font-size: 15px;
     font-weight: 600;
     line-height: 1.4;
     word-break: break-word;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .body-row {
+    margin-top: 8px;
   }
   .body {
-    margin: 8px 0 0;
+    flex: 1;
+    min-width: 0;
+    margin: 0;
     max-height: 180px;
     overflow: auto;
     color: var(--text-dim);
@@ -245,6 +267,21 @@
     font-size: 13px;
     white-space: pre-wrap;
     word-break: break-word;
+  }
+  .copy-message {
+    flex-shrink: 0;
+    width: 26px;
+    height: 24px;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-faint);
+    font-size: 14px;
+  }
+  .copy-message:hover {
+    border-color: var(--border);
+    background: var(--bg-menu);
+    color: var(--text);
   }
   .meta {
     padding: 12px 16px;

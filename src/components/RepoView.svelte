@@ -227,15 +227,34 @@
     menu = { x: e.clientX, y: e.clientY, items };
   }
 
+  function branchRefs() {
+    return (tab.repo?.refs ?? []).filter((r) => r.kind !== "tag" && !r.name.endsWith("/HEAD"));
+  }
+
+  function refShown(r: RefInfo) {
+    return !tab.focus.length || tab.focus.includes(r.full) || (r.is_head && tab.focus.includes("HEAD"));
+  }
+
+  function setRefShown(r: RefInfo, shown: boolean) {
+    if (shown) return tab.setFocus([...tab.focus, r.full]);
+    const next = tab.focus.length
+      ? tab.focus.filter((f) => f !== r.full && !(f === "HEAD" && r.is_head))
+      : branchRefs().filter((x) => x.full !== r.full).map((x) => x.full);
+    return tab.setFocus(next);
+  }
+
   function onRefMenu(e: MouseEvent, r: RefInfo) {
     const items: MenuItem[] = [];
     if (r.kind !== "tag") {
-      const shown = tab.focus.includes(r.full);
+      const shown = refShown(r);
+      const lastShown = shown && branchRefs().filter(refShown).length <= 1;
       items.push({ label: t("只显示这个分支"), action: () => tab.setFocus([r.full]) });
-      if (tab.focus.length && !shown && !(tab.focus.length === 1 && tab.focus[0] === "HEAD"))
-        items.push({ label: t("同时显示这个分支"), action: () => tab.setFocus([...tab.focus, r.full]) });
-      if (shown && tab.focus.length > 1)
-        items.push({ label: t("不再显示这个分支"), action: () => tab.setFocus(tab.focus.filter((f) => f !== r.full)) });
+      items.push({
+        label: shown ? t("隐藏这个分支") : t("显示这个分支"),
+        disabled: lastShown,
+        hint: lastShown ? t("至少保留一个分支") : undefined,
+        action: () => setRefShown(r, !shown),
+      });
       if (tab.focus.length) items.push({ label: t("显示全部分支"), action: () => tab.setFocus([]) });
       items.push("sep");
     }

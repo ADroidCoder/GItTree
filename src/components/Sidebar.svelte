@@ -119,12 +119,6 @@
   );
   const stashes = $derived(tab.stashes.filter((s) => !f || s.message.toLowerCase().includes(f)));
 
-  function goto(r: RefInfo) {
-    if (r.row === null) return;
-    tab.select(r.row, r.oid);
-    tab.scrollTo(r.row);
-  }
-
   /** 标签很多时只渲染一部分 */
   let tagLimit = $state(200);
 </script>
@@ -135,7 +129,7 @@
   <div
     class="item"
     class:head={r.is_head}
-    class:selected={r.row !== null && r.row === tab.selectedRow}
+    class:selected={r.row !== null && r.full === tab.selectedRef && r.oid === tab.selectedOid}
     class:missing={r.row === null}
     class:drop-target={dropOn === r.full}
     style="padding-left:{14 + depth * 14}px"
@@ -161,7 +155,7 @@
       dropOn = null;
       if (src) onRefDrop(e, src, r);
     }}
-    onclick={() => goto(r)}
+    onclick={() => tab.selectRef(r)}
     ondblclick={() => onRefDblClick(r)}
     oncontextmenu={(e) => {
       e.preventDefault();

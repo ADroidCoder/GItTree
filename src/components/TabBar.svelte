@@ -24,31 +24,33 @@
     {/if}
   </button>
   <span class="divider"></span>
-  {#each app.tabs as tb (tb.key)}
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div
-      class="tab"
-      class:active={app.view === "repo" && tb.key === app.activeKey}
-      role="tab"
-      tabindex="-1"
-      aria-selected={tb.key === app.activeKey}
-      title={tb.id || tb.requestedPath}
-      onclick={() => activate(tb)}
-      onauxclick={(e) => e.button === 1 && closeTab(tb)}
-    >
-      <span class="ico">{tb.loading ? "⟳" : tb.error ? "⚠" : "⎇"}</span>
-      <span class="name">{tb.name}</span>
-      {#if tb.changeCount}<span class="dot" title={t("有未提交的更改")}></span>{/if}
-      <button
-        class="close"
-        title={t("关闭标签页")}
-        onclick={(e) => {
-          e.stopPropagation();
-          closeTab(tb);
-        }}>✕</button
+  <div class="tabs">
+    {#each app.tabs as tb (tb.key)}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="tab"
+        class:active={app.view === "repo" && tb.key === app.activeKey}
+        role="tab"
+        tabindex="-1"
+        aria-selected={tb.key === app.activeKey}
+        title={tb.id || tb.requestedPath}
+        onclick={() => activate(tb)}
+        onauxclick={(e) => e.button === 1 && closeTab(tb)}
       >
-    </div>
-  {/each}
+        <span class="ico">{tb.loading ? "⟳" : tb.error ? "⚠" : "⎇"}</span>
+        <span class="name">{tb.name}</span>
+        {#if tb.changeCount}<span class="dot" title={t("有未提交的更改")}></span>{/if}
+        <button
+          class="close"
+          title={t("关闭标签页")}
+          onclick={(e) => {
+            e.stopPropagation();
+            closeTab(tb);
+          }}>✕</button
+        >
+      </div>
+    {/each}
+  </div>
   <button
     class="add"
     title={t("打开仓库")}
@@ -79,15 +81,24 @@
     background: var(--bg-tabbar);
     border-bottom: 1px solid var(--border);
     user-select: none;
+    overflow: hidden;
+  }
+  .tabbar.mac {
+    padding-left: 80px;
+  }
+  .tabs {
+    display: flex;
+    align-items: flex-end;
+    align-self: stretch;
+    gap: 2px;
+    flex: 0 1 auto;
+    min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
   }
-  .tabbar::-webkit-scrollbar {
+  .tabs::-webkit-scrollbar {
     display: none;
-  }
-  .tabbar.mac {
-    padding-left: 80px;
   }
   .tab {
     display: flex;
